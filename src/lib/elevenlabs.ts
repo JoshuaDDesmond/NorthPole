@@ -30,8 +30,13 @@ async function el(path: string, init: RequestInit & { timeoutMs?: number } = {})
 async function errorDetail(res: Response) {
   try {
     const body = (await res.json()) as { detail?: unknown };
-    const d = body.detail;
-    const text = typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => (x as { msg?: string }).msg ?? "").join("; ") : JSON.stringify(d ?? "");
+    const d = body.detail as unknown;
+    const obj = d && typeof d === "object" && !Array.isArray(d) ? (d as { message?: string; status?: string }) : null;
+    if (obj?.status === "missing_permissions" && obj.message) {
+      const perm = obj.message.match(/permission (\w+)/)?.[1];
+      return `the API key is missing the "${permissionLabel(perm)}" permission. In ElevenLabs, open Developers → API Keys, edit this key and turn that permission on, then try again (no redeploy needed)`;
+    }
+    const text = obj?.message ?? (typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => (x as { msg?: string }).msg ?? "").join("; ") : JSON.stringify(d ?? ""));
     return text.replace(/sk_[A-Za-z0-9]+/g, "[key]").slice(0, 300);
   } catch {
     return "";
@@ -117,6 +122,15 @@ export async function upsertAgent(existingAgentId: string | null, opts: { voiceI
   const body = (await res.json()) as { agent_id?: string };
   if (!body.agent_id) throw new HttpError(502, "agent_create_failed", "ElevenLabs didn't return an agent id.");
   return body.agent_id;
+}
+
+function permissionLabel(perm: string | undefined) {
+  const labels: Record<string, string> = {
+    voices_read: "Voices: Read",
+    convai_read: "ElevenLabs Agents: Read",
+    convai_write: "ElevenLabs Agents: Write",
+  };
+  return (perm && labels[perm]) || perm || "required";
 }
 
 async function detailSuffix(res: Response) {
