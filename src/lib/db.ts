@@ -14,6 +14,10 @@ export function parseDatabaseUrl(raw: string): { connectionString: string; schem
     const url = new URL(raw);
     const schema = url.searchParams.get("schema") ?? undefined;
     url.searchParams.delete("schema");
+    // node-postgres treats require/prefer/verify-ca as full verification today but will
+    // weaken them to libpq semantics in a future major. Pin the strict behavior explicitly.
+    const ssl = url.searchParams.get("sslmode");
+    if (ssl && ["prefer", "require", "verify-ca"].includes(ssl)) url.searchParams.set("sslmode", "verify-full");
     return { connectionString: url.toString(), schema: schema && schema !== "public" ? schema : undefined };
   } catch {
     return { connectionString: raw, schema: undefined };

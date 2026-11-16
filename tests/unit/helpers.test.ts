@@ -98,7 +98,7 @@ describe("database url parsing", async () => {
   it("moves Prisma's schema parameter out of the connection string", () => {
     const r = parseDatabaseUrl("postgresql://u:p@host:6543/postgres?schema=northpole&sslmode=require");
     expect(r.schema).toBe("northpole");
-    expect(r.connectionString).toBe("postgresql://u:p@host:6543/postgres?sslmode=require");
+    expect(r.connectionString).toBe("postgresql://u:p@host:6543/postgres?sslmode=verify-full");
   });
   it("treats public as the default schema", () => {
     expect(parseDatabaseUrl("postgresql://u:p@localhost/db?schema=public").schema).toBeUndefined();
