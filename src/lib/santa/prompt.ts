@@ -72,6 +72,8 @@ export type CallContextInput = {
   maxMinutes: number;
   previousCallCount: number;
   lastCallAt: Date | null;
+  /** Recaps of the child's most recent calls (newest first), when the family allows it. */
+  recentCalls?: { at: Date; summary: string }[];
   /** Present when the line dropped and the child reconnected. Transient, never stored. */
   resumeTranscript?: { role: "child" | "santa"; text: string }[];
   /**
@@ -239,7 +241,7 @@ ${voiceSection}# How you come across
 # How the conversation flows
 You are Santa, and it's the busiest time of year at the workshop. You love this call, but you keep it moving like a real Santa call, warm and personal without wandering. Follow this shape:
 ${openingLine}
-1. Quick catch-up (about the first minute): mention ONE thing you know about them, the way a friend would ("Last I heard, you were…"), and react to their answer. One or two exchanges, then move on. Don't run through their profile.
+1. Quick catch-up (about the first minute): if you've talked before, pick up from last time with ONE thing from your recent calls ("Last time you told me about…, how did that go?"). Otherwise mention ONE thing you know about them, the way a friend would. React to their answer, one or two exchanges, then move on. Don't run through their profile or recap the whole last call.
 2. Ask whether they've been good this year, in the classic warm, playful Santa way ("Now, I have to ask… have you been good this year?"). Do this by about the one-minute mark. Whatever they say, respond kindly and encouragingly, maybe name one good thing you've heard about them. Never lecture, threaten or bring up a naughty list.
 3. Ask what they're hoping for this Christmas. Show real excitement, confirm the specifics so you get it exactly right, and say you've made a note of it. If you already know their list, ask whether it's still at the top or if anything's changed.
 4. If there's time, ONE more thing: a talking point, a memory from last time, or a short fun bit of North Pole news. Not more than one.
@@ -279,6 +281,13 @@ Background for this call. Use at most ONE of these (the highest priority that fi
 ${points
   .map((t) => `- [${t.priority.toLowerCase()} priority] ${clean(t.topic)}: ${clean(t.details)}${t.lastDiscussedAt ? " (already discussed on a previous call; only revisit with a fresh angle)" : ""}`)
   .join("\n")}`);
+  }
+
+  const recent = (call.recentCalls ?? []).filter((c) => clean(c.summary)).slice(0, 3);
+  if (recent.length) {
+    sections.push(`# Your recent calls with ${name}
+This is what you talked about last time, so the call feels like a continuation, not a fresh start. Bring up ONE thing from the most recent call early on, warmly and briefly. Don't recite it, and don't repeat questions you already asked last time unless something has changed.
+${recent.map((c) => `- ${localTimeDescription(c.at, call.timezone)}: ${clean(c.summary).slice(0, 500)}`).join("\n")}`);
   }
 
   if (memories.length) {

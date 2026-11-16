@@ -29,6 +29,7 @@ export default async function SettingsPage() {
         dailyMinutesPerChild: true,
         weeklyMinutesPerChild: true,
         generateMemoryProposals: true,
+        autoRecallCalls: true,
         ambientSound: true,
         santaPhotoType: true,
         santaPhotoUpdatedAt: true,
@@ -92,6 +93,7 @@ export default async function SettingsPage() {
               dailyMinutesPerChild: family.dailyMinutesPerChild,
               weeklyMinutesPerChild: family.weeklyMinutesPerChild,
               generateMemoryProposals: family.generateMemoryProposals,
+              autoRecallCalls: family.autoRecallCalls,
               ambientSound: family.ambientSound,
             }}
           />

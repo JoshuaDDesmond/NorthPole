@@ -72,6 +72,7 @@ model Family {
   dailyMinutesPerChild    Int     @default(20)
   weeklyMinutesPerChild   Int     @default(20) // resets Monday, family time zone
   generateMemoryProposals Boolean @default(true)
+  autoRecallCalls         Boolean @default(true) // Santa gets recaps of recent calls without approval
   ambientSound            Boolean @default(false)
   elevenAgentId           String? // ElevenLabs agent created by the app
 

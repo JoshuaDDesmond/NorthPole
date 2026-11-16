@@ -31,13 +31,22 @@ export async function assembleCallContext(params: {
   });
   if (!child) return null;
 
-  const [previousCallCount, lastCall] = await Promise.all([
+  const [previousCallCount, lastCall, recentCalls] = await Promise.all([
     db.call.count({ where: { childId: child.id, connectedAt: { not: null } } }),
     db.call.findFirst({
       where: { childId: child.id, connectedAt: { not: null } },
       orderBy: { startedAt: "desc" },
       select: { startedAt: true },
     }),
+    // Recaps of recent calls (never ones flagged for a parent check-in), if the family allows it.
+    child.family.autoRecallCalls
+      ? db.call.findMany({
+          where: { childId: child.id, connectedAt: { not: null }, summary: { not: null }, safetyFlag: false },
+          orderBy: { startedAt: "desc" },
+          take: 3,
+          select: { startedAt: true, summary: true },
+        })
+      : Promise.resolve([] as { startedAt: Date; summary: string | null }[]),
   ]);
 
   const personality = child.family.personality;
@@ -67,6 +76,7 @@ export async function assembleCallContext(params: {
       previousCallCount,
       lastCallAt: lastCall?.startedAt ?? null,
       resumeTranscript: params.resumeTranscript,
+      recentCalls: recentCalls.map((c) => ({ at: c.startedAt, summary: c.summary ?? "" })),
       engine: params.engine ?? "speech",
     },
   };

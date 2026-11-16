@@ -137,6 +137,19 @@ describe("buildSantaInstructions", () => {
     expect(text).toMatch(/Ask one question at a time/);
   });
 
+  it("gives Santa a recap of recent calls so each call continues the last", () => {
+    const input = baseInput();
+    input.call.previousCallCount = 2;
+    input.call.recentCalls = [
+      { at: new Date("2026-12-08T23:00:00Z"), summary: "Talked about the hockey tournament and asked for a goalie stick." },
+      { at: new Date("2026-12-01T23:00:00Z"), summary: "Shared that the dog learned a new trick." },
+    ];
+    const text = buildSantaInstructions(input);
+    expect(text).toContain("# Your recent calls with Alex");
+    expect(text).toContain("hockey tournament and asked for a goalie stick");
+    expect(text).toMatch(/pick up from last time/);
+  });
+
   it("tells Santa to sound like an older man", () => {
     const text = buildSantaInstructions(baseInput());
     expect(text).toMatch(/late sixties/);

@@ -181,6 +181,7 @@ export type FamilySettingsValue = {
   dailyMinutesPerChild: number;
   weeklyMinutesPerChild: number;
   generateMemoryProposals: boolean;
+  autoRecallCalls: boolean;
   ambientSound: boolean;
 };
 
@@ -252,6 +253,16 @@ export function CallingPreferencesPanel({ initial }: { initial: FamilySettingsVa
             </p>
           </div>
           <Toggle checked={v.generateMemoryProposals} onChange={(c) => set("generateMemoryProposals", c)} label="Suggest memories after calls" />
+        </div>
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-line px-4 py-3 sm:col-span-2">
+          <div>
+            <p className="text-sm font-medium text-snow">Santa remembers recent calls</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-mist">
+              Santa gets the short summaries of each child&apos;s last three calls, so every call picks up where the last one left off. You can edit or delete any summary in Call History.
+              Calls flagged for a check-in are never shared with Santa. Turn off to have Santa use only memories you approve.
+            </p>
+          </div>
+          <Toggle checked={v.autoRecallCalls} onChange={(c) => set("autoRecallCalls", c)} label="Santa remembers recent calls" />
         </div>
         <div className="flex items-start justify-between gap-4 rounded-xl border border-line px-4 py-3 sm:col-span-2">
           <div>

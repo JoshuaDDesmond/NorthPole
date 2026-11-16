@@ -132,6 +132,7 @@ export const familySettingsSchema = z.object({
   weeklyMinutesPerChild: z.number().int().min(5).max(600).optional(),
   generateMemoryProposals: z.boolean().optional(),
   ambientSound: z.boolean().optional(),
+  autoRecallCalls: z.boolean().optional(),
 });
 
 export const callSummaryPatchSchema = z.object({

@@ -666,6 +666,7 @@ await check("post-call memories are only proposed, and only approved ones reach 
   assert(sent.includes('"store":false'), "digest must use store:false");
   const s1 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
   assert(!mock.sessions.at(-1).session.instructions.includes("big hockey game on Saturday"), "proposed memory leaked into next call");
+  assert(mock.sessions.at(-1).session.instructions.includes("Talked about hockey."), "recent call recap missing from next call");
   await kid(`/api/call/${s1.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
   await parent(`/api/parent/memories/${row.id}`, { method: "PATCH", body: { status: "APPROVED" } });
   const s2 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
@@ -673,6 +674,18 @@ await check("post-call memories are only proposed, and only approved ones reach 
   await kid(`/api/call/${s2.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
   const call = (await db.query(`SELECT summary, "summaryStatus" FROM "Call" WHERE summary IS NOT NULL ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
   assert(call?.summaryStatus === "PROPOSED", "summary should await parent approval");
+});
+await check("recaps respect the parent's setting and never include calls flagged for a check-in", async () => {
+  await parent("/api/parent/settings", { method: "PATCH", body: { autoRecallCalls: false } });
+  const off = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
+  assert(!mock.sessions.at(-1).session.instructions.includes("Talked about hockey."), "recap sent while setting is off");
+  await kid(`/api/call/${off.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+  await parent("/api/parent/settings", { method: "PATCH", body: { autoRecallCalls: true } });
+  await db.query(`UPDATE "Call" SET "safetyFlag" = true WHERE summary = 'Talked about hockey.'`);
+  const flagged = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
+  assert(!mock.sessions.at(-1).session.instructions.includes("Talked about hockey."), "flagged call recapped to Santa");
+  await kid(`/api/call/${flagged.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+  await db.query(`UPDATE "Call" SET "safetyFlag" = false WHERE summary = 'Talked about hockey.'`);
 });
 await check("wishes a kid tells Santa land on the list for review, then reach Santa once kept", async () => {
   const heard = (await db.query(`SELECT id, approved, source, details FROM "WishListItem" WHERE "childId"=$1 AND title='Bauer Vapor hockey skates'`, [aliceId])).rows;
