@@ -12,12 +12,13 @@ export default async function ParentLayout({ children }: { children: ReactNode }
   const parent = await requireParentPage();
   if (parent.mustChangePassword) return <ForcePasswordChange name={parent.name} />;
   await sweepCalls(parent.familyId);
-  const [family, pending] = await Promise.all([
+  const [family, pending, pendingWishes] = await Promise.all([
     db.family.findUniqueOrThrow({ where: { id: parent.familyId }, select: { name: true, callingEnabled: true } }),
     db.memory.count({ where: { status: "PROPOSED", child: childWhere(parent) } }),
+    db.wishListItem.count({ where: { approved: false, child: childWhere(parent) } }),
   ]);
   return (
-    <DashboardShell isOwner={parent.isOwner} parentName={parent.name} familyName={family.name} pendingMemories={pending} callingEnabled={family.callingEnabled}>
+    <DashboardShell isOwner={parent.isOwner} parentName={parent.name} familyName={family.name} pendingMemories={pending} pendingWishes={pendingWishes} callingEnabled={family.callingEnabled}>
       {children}
     </DashboardShell>
   );

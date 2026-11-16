@@ -7,6 +7,7 @@ export type TranscriptTurn = { role: "child" | "santa"; text: string };
 export const summarySchema = z.object({
   summary: z.string().max(600),
   proposedMemories: z.array(z.string().max(240)).max(5),
+  newWishes: z.array(z.object({ title: z.string().max(160), details: z.string().max(500) })).max(10),
   discussedTalkingPointIds: z.array(z.string()).max(20),
   referencedMemoryIds: z.array(z.string()).max(20),
   safetyConcern: z.boolean(),
@@ -18,7 +19,7 @@ export type CallDigest = z.infer<typeof summarySchema>;
 const jsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["summary", "proposedMemories", "discussedTalkingPointIds", "referencedMemoryIds", "safetyConcern", "safetyNote"],
+  required: ["summary", "proposedMemories", "newWishes", "discussedTalkingPointIds", "referencedMemoryIds", "safetyConcern", "safetyNote"],
   properties: {
     summary: { type: "string", description: "2-3 sentence summary for the parent, written plainly." },
     proposedMemories: {
@@ -26,6 +27,19 @@ const jsonSchema = {
       maxItems: 5,
       items: { type: "string" },
       description: "Concise, useful facts the child shared that Santa could naturally follow up on next time.",
+    },
+    newWishes: {
+      type: "array",
+      maxItems: 10,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "details"],
+        properties: {
+          title: { type: "string", description: "Short name of the item, as specific as the child was (brand and model if given)." },
+          details: { type: "string", description: "Size, color, version or other specifics the child gave, or empty." },
+        },
+      },
     },
     discussedTalkingPointIds: { type: "array", items: { type: "string" } },
     referencedMemoryIds: { type: "array", items: { type: "string" } },
@@ -38,9 +52,10 @@ const DIGEST_INSTRUCTIONS = `You help a parent review a phone call their child h
 From the transcript, produce:
 1. summary: 2-3 plain sentences for the parent about what was discussed. No fluff.
 2. proposedMemories: up to 5 short facts the CHILD shared that would help Santa follow up naturally on a future call (e.g. "Has a big hockey game on Saturday and is nervous about it"). Rules: only things the child actually said; one fact per item; under 25 words; third person, no names needed; no sensitive data (addresses, phone numbers, passwords, full school names, health details, anything private about other people); skip anything already covered by the known facts list; return [] if nothing is worth remembering.
-3. discussedTalkingPointIds: ids of the listed talking points that were actually discussed.
-4. referencedMemoryIds: ids of the listed memories Santa actually referenced.
-5. safetyConcern: true ONLY if the child said something a parent should know about for their safety or wellbeing (harm, abuse, danger, serious distress, bullying). safetyNote: one neutral sentence if true, else "".`;
+3. newWishes: things the CHILD said they want for Christmas that are NOT already on the current wish list below. Capture them exactly as specifically as the child said them (brand, model, size, color, version), using Santa's confirmations to get the details right. Don't include things only Santa suggested, and return [] if there's nothing new.
+4. discussedTalkingPointIds: ids of the listed talking points that were actually discussed.
+5. referencedMemoryIds: ids of the listed memories Santa actually referenced.
+6. safetyConcern: true ONLY if the child said something a parent should know about for their safety or wellbeing (harm, abuse, danger, serious distress, bullying). safetyNote: one neutral sentence if true, else "".`;
 
 /**
  * Turns a transient transcript into a parent-review digest. The transcript is
@@ -51,6 +66,7 @@ export async function digestCall(params: {
   knownFacts: string[];
   talkingPoints: { id: string; topic: string }[];
   memories: { id: string; content: string }[];
+  wishList?: string[];
   safetyId: string;
 }): Promise<CallDigest | null> {
   const key = env.openaiApiKey;
@@ -66,6 +82,7 @@ export async function digestCall(params: {
     `Known facts:\n${params.knownFacts.map((f) => `- ${f}`).join("\n") || "- (none)"}`,
     `Talking points:\n${params.talkingPoints.map((t) => `- ${t.id}: ${t.topic}`).join("\n") || "- (none)"}`,
     `Memories:\n${params.memories.map((m) => `- ${m.id}: ${m.content}`).join("\n") || "- (none)"}`,
+    `Current wish list:\n${(params.wishList ?? []).map((w) => `- ${w}`).join("\n") || "- (empty)"}`,
     `Transcript:\n${transcript}`,
   ].join("\n\n");
 

@@ -191,3 +191,41 @@ describe("time helpers in prompt", () => {
     expect(wrapUpNudge(45)).toMatch(/seconds left/);
   });
 });
+
+describe("wish list in Santa's briefing", () => {
+  const wish = (o: Partial<import("@/lib/santa/prompt").WishInput>) => ({
+    id: Math.random().toString(36).slice(2),
+    title: "Wish",
+    details: "",
+    topWish: false,
+    santaCanMention: true,
+    approved: true,
+    ...o,
+  });
+
+  it("includes approved, mentionable wishes with their details, top wishes first", () => {
+    const text = buildSantaInstructions(
+      baseInput({
+        wishes: [wish({ title: "Lego Millennium Falcon" }), wish({ title: "Bauer Vapor skates", details: "size 8, black", topWish: true })],
+      }),
+    );
+    expect(text).toContain("# Christmas wishes");
+    expect(text).toContain("[top wish] Bauer Vapor skates (size 8, black)");
+    expect(text.indexOf("Bauer Vapor skates (size 8")).toBeLessThan(text.indexOf("Lego Millennium Falcon"));
+  });
+
+  it("leaves out wishes heard on calls until a parent keeps them, and hidden ones", () => {
+    const text = buildSantaInstructions(
+      baseInput({ wishes: [wish({ title: "Unreviewed drone", approved: false }), wish({ title: "Secret surprise bike", santaCanMention: false })] }),
+    );
+    expect(text).not.toContain("Unreviewed drone");
+    expect(text).not.toContain("Secret surprise bike");
+    expect(text).toContain("ask what they're hoping for");
+  });
+
+  it("asks Santa to confirm specifics and never promise", () => {
+    const text = buildSantaInstructions(baseInput());
+    expect(text).toMatch(/confirm the specifics/);
+    expect(text).toMatch(/Never promise any item/);
+  });
+});

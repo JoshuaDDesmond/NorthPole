@@ -12,7 +12,7 @@ import { selectMemories, selectTalkingPoints } from "../santa/prompt";
 export async function processCallDigest(callId: string, transcript: TranscriptTurn[]) {
   const call = await db.call.findUnique({
     where: { id: callId },
-    include: { child: { include: { talkingPoints: true, memories: { where: { status: "APPROVED" } } } } },
+    include: { child: { include: { talkingPoints: true, memories: { where: { status: "APPROVED" } }, wishes: { select: { title: true, details: true } } } } },
   });
   if (!call) return;
   const now = new Date();
@@ -28,12 +28,20 @@ export async function processCallDigest(callId: string, transcript: TranscriptTu
     knownFacts: [...knownFacts, ...memories.map((m) => m.content)],
     talkingPoints: points.map((p) => ({ id: p.id, topic: p.topic })),
     memories: memories.map((m) => ({ id: m.id, content: m.content })),
+    wishList: c.wishes.map((w) => (w.details ? `${w.title} (${w.details})` : w.title)),
     safetyId: safetyIdentifier(c.familyId, c.id),
   });
   if (!digest) return;
 
   const validPointIds = new Set(points.map((p) => p.id));
   const validMemoryIds = new Set(memories.map((m) => m.id));
+  // New wishes heard on the call wait on the list for a parent to keep or remove.
+  const existing = new Set(c.wishes.map((w) => normalizeWish(w.title)));
+  const newWishes = digest.newWishes
+    .map((w) => ({ title: w.title.trim(), details: w.details.trim() }))
+    .filter((w) => w.title && !existing.has(normalizeWish(w.title)))
+    .filter((w, i, all) => all.findIndex((x) => normalizeWish(x.title) === normalizeWish(w.title)) === i);
+
   const discussed = digest.discussedTalkingPointIds.filter((id) => validPointIds.has(id));
   const referenced = digest.referencedMemoryIds.filter((id) => validMemoryIds.has(id));
 
@@ -51,9 +59,16 @@ export async function processCallDigest(callId: string, transcript: TranscriptTu
       .map((m) => m.trim())
       .filter(Boolean)
       .map((content) => db.memory.create({ data: { childId: c.id, callId: call.id, content, status: "PROPOSED", source: "CALL" } })),
+    ...newWishes.map((w) =>
+      db.wishListItem.create({ data: { childId: c.id, callId: call.id, title: w.title, details: w.details, source: "CALL", approved: false } }),
+    ),
     ...(discussed.length
       ? [db.talkingPoint.updateMany({ where: { id: { in: discussed } }, data: { lastDiscussedAt: now, timesDiscussed: { increment: 1 } } })]
       : []),
     ...(referenced.length ? [db.memory.updateMany({ where: { id: { in: referenced } }, data: { lastReferencedAt: now } })] : []),
   ]);
+}
+
+function normalizeWish(title: string) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }

@@ -43,6 +43,11 @@ enum CallStatus {
   ENDED_BY_PARENT
 }
 
+enum WishSource {
+  PARENT
+  CALL
+}
+
 enum ParentRole {
   OWNER
   PARENT
@@ -188,6 +193,7 @@ model Child {
   memories      Memory[]
   calls         Call[]
   access        ChildAccess[]
+  wishes        WishListItem[]
 
   @@index([familyId])
 }
@@ -225,29 +231,54 @@ model Memory {
   @@index([childId, status])
 }
 
-model Call {
-  id              String        @id @default(cuid())
+/// A Christmas wish. Links, notes and "purchased" are for parents only; Santa
+/// sees just the title and details of approved items he's allowed to mention.
+model WishListItem {
+  id              String     @id @default(cuid())
   childId         String
-  child           Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  child           Child      @relation(fields: [childId], references: [id], onDelete: Cascade)
+  title           String
+  details         String     @default("") // size, color, model: shared with Santa
+  link            String? // parent-only
+  notes           String     @default("") // parent-only (price, where to buy, who's getting it)
+  topWish         Boolean    @default(false)
+  purchased       Boolean    @default(false) // parent-only
+  santaCanMention Boolean    @default(true)
+  approved        Boolean    @default(true) // wishes heard on calls wait for a parent
+  source          WishSource @default(PARENT)
+  callId          String?
+  call            Call?      @relation(fields: [callId], references: [id], onDelete: SetNull)
+  sortOrder       Int        @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([childId])
+}
+
+model Call {
+  id              String         @id @default(cuid())
+  childId         String
+  child           Child          @relation(fields: [childId], references: [id], onDelete: Cascade)
   deviceId        String?
-  device          FamilyDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  device          FamilyDevice?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   resumedFromId   String?
-  status          CallStatus    @default(CONNECTING)
+  status          CallStatus     @default(CONNECTING)
   endReason       String?
   openaiCallId    String?
   model           String?
   voice           String?
   maxSeconds      Int
-  startedAt       DateTime      @default(now())
+  startedAt       DateTime       @default(now())
   connectedAt     DateTime?
   endedAt         DateTime?
   lastHeartbeatAt DateTime?
-  durationSec     Int           @default(0)
+  durationSec     Int            @default(0)
   summary         String?
-  summaryStatus   SummaryStatus @default(NONE)
-  safetyFlag      Boolean       @default(false)
+  summaryStatus   SummaryStatus  @default(NONE)
+  safetyFlag      Boolean        @default(false)
   safetyNote      String?
   memories        Memory[]
+  wishes          WishListItem[]
 
   @@index([childId, startedAt])
   @@index([status])

@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 const TABS = [
   { id: "profile", label: "Profile" },
   { id: "talking-points", label: "Talking Points" },
+  { id: "wishes", label: "Wish List" },
   { id: "memory", label: "Memory" },
   { id: "preview", label: "Preview" },
 ] as const;

@@ -36,6 +36,12 @@ export async function getOwnedMemory(id: string, parent: ParentContext) {
   return m;
 }
 
+export async function getOwnedWish(id: string, parent: ParentContext) {
+  const w = await db.wishListItem.findFirst({ where: { id, child: childWhere(parent) } });
+  if (!w) throw notFound("That wish doesn't exist.");
+  return w;
+}
+
 export async function getOwnedCall(id: string, parent: ParentContext) {
   const c = await db.call.findFirst({ where: { id, child: childWhere(parent) } });
   if (!c) throw notFound("That call doesn't exist.");

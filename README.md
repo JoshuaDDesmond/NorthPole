@@ -68,11 +68,15 @@ Any Node 20+ host with Postgres works: `npm ci && npm run db:deploy && npm run b
 - **Time limits** are enforced twice: in the browser (with a quiet wrap-up cue so Santa says goodbye naturally), and on the server, which hangs up the OpenAI call itself via heartbeat checks, the emergency switch, and a cleanup job.
 - **Dropped lines** reconnect automatically once, carrying the last few lines of conversation so Santa picks up where he left off.
 
+### Wish lists
+Each child has a wish list (child page → **Wish List**, or **Wish Lists** for everyone at once). Add items with an optional link, private notes, a top-wish star and a "Got it" checkbox for coordinating between parents. When a child tells Santa about a new wish on a call, Santa confirms the specifics (brand, size, color) and it lands on the list marked "Heard on a call" for a parent to keep or remove. Santa sees only the wish and its details for items you've kept and allowed him to mention. He never sees links, private notes or what's been bought, and he never promises anything.
+
 ### What Santa knows
-Three sources, assembled fresh for every call:
+Four sources, assembled fresh for every call:
 1. **The child's profile** (authoritative).
 2. **Talking points** you write: enabled, unexpired, highest priority first, rotating ones already discussed.
-3. **Approved memories** only. After a call, a short summary and up to five *suggested* memories are generated and parked in your review queue. Nothing is used until you approve it.
+3. **The wish list**: kept, mentionable items only (titles and details).
+4. **Approved memories** only. After a call, a short summary and up to five *suggested* memories are generated and parked in your review queue. Nothing is used until you approve it.
 
 Open any child → **Preview** to see the exact briefing Santa will receive.
 

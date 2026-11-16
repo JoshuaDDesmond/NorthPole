@@ -88,7 +88,7 @@ const mockServer = createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/v1/responses") {
     const parsed = JSON.parse(body.toString());
     mock.digests.push(parsed);
-    const reply = mock.digestReply ?? { summary: "", proposedMemories: [], discussedTalkingPointIds: [], referencedMemoryIds: [], safetyConcern: false, safetyNote: "" };
+    const reply = mock.digestReply ?? { summary: "", proposedMemories: [], newWishes: [], discussedTalkingPointIds: [], referencedMemoryIds: [], safetyConcern: false, safetyNote: "" };
     res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(reply) }] }] }));
     return;
   }
@@ -278,6 +278,23 @@ await check("contact photo upload (validated by content, not extension)", async 
   assert(res.headers.get("content-type") === "image/png", `served ${res.headers.get("content-type")}`);
   await parent("/api/parent/photo", { method: "DELETE" });
 });
+let falconId;
+await check("wish list items save with links, and links must be real web links", async () => {
+  const bad = await parent(`/api/parent/children/${aliceId}/wishes`, { method: "POST", body: { title: "Bad link", link: "javascript:alert(1)" } });
+  assert(bad.status === 400, `javascript: link accepted (${bad.status})`);
+  const a = await parent(`/api/parent/children/${aliceId}/wishes`, {
+    method: "POST",
+    body: { title: "Lego Millennium Falcon", details: "the big one", link: "https://www.lego.com/en-us/product/millennium-falcon-75192", notes: "PRIVATE-NOTE grandma", topWish: true },
+  });
+  assert(a.status === 201 && a.json.wish.approved === true && a.json.wish.source === "PARENT", `create ${a.status} ${a.text}`);
+  falconId = a.json.wish.id;
+  await parent(`/api/parent/children/${aliceId}/wishes`, { method: "POST", body: { title: "Surprise puppy", santaCanMention: false } });
+  const bought = await parent(`/api/parent/wishes/${falconId}`, { method: "PATCH", body: { purchased: true } });
+  assert(bought.json.wish.purchased === true, "purchase flag");
+  const list = await parent(`/api/parent/children/${aliceId}/wishes`);
+  assert(list.json.wishes.length === 2, `list ${list.json.wishes.length}`);
+});
+
 await check("calls are blocked until a parent gives consent", async () => {
   await parent("/api/parent/access-code", { method: "POST", body: { code: "reindeer-games" } });
   const k = client();
@@ -338,6 +355,9 @@ await check("a parent cannot read or change another parent's child", async () =>
     await jamie(`/api/parent/children/${aliceId}/memories`),
     await jamie(`/api/parent/children/${aliceId}/preview`),
     await jamie(`/api/parent/talking-points/${tpId}`, { method: "PATCH", body: { details: "x" } }),
+    await jamie(`/api/parent/children/${aliceId}/wishes`),
+    await jamie(`/api/parent/wishes/${falconId}`, { method: "PATCH", body: { title: "Hacked" } }),
+    await jamie(`/api/parent/wishes/${falconId}`, { method: "DELETE" }),
   ];
   assert(checks.every((c) => c.status === 404), `statuses ${checks.map((c) => c.status)}`);
   const alice = (await parent(`/api/parent/children/${aliceId}`)).json.child;
@@ -432,6 +452,8 @@ await check("call start relays to the Realtime API with this child's approved co
   const ins = s.instructions;
   for (const must of ["Ace", "A beagle named Pepper", "Made the travel team", "Season ended 9-2", "Best friend: Riley", "nervous about a big math test"]) assert(ins.includes(must), `missing "${must}"`);
   for (const mustNot of ["UNAPPROVED proposed fact", "Builds model rockets", "Expired item", "Disabled item"]) assert(!ins.includes(mustNot), `leaked "${mustNot}"`);
+  assert(ins.includes("[top wish] Lego Millennium Falcon (the big one)"), "wish list missing from Santa's briefing");
+  for (const mustNot of ["lego.com", "PRIVATE-NOTE", "Surprise puppy", "purchased"]) assert(!ins.includes(mustNot), `wish data leaked to Santa: "${mustNot}"`);
   assert(mock.sessions.at(-1).safetyId && !mock.sessions.at(-1).safetyId.includes(aliceId), "safety identifier");
 });
 await check("browser response contains no API key or secret", async () => {
@@ -605,7 +627,14 @@ await check("End Call terminates WebRTC, releases the mic, and shows the ended s
 });
 await check("post-call memories are only proposed, and only approved ones reach the next call", async () => {
   // The previous call ended without a digest reply configured; run one more short call with a configured digest.
-  mock.digestReply = { summary: "Talked about hockey.", proposedMemories: ["Has a big hockey game on Saturday"], discussedTalkingPointIds: [], referencedMemoryIds: [], safetyConcern: false, safetyNote: "" };
+  mock.digestReply = {
+    summary: "Talked about hockey.",
+    proposedMemories: ["Has a big hockey game on Saturday"],
+    newWishes: [
+      { title: "Bauer Vapor hockey skates", details: "size 8, black" },
+      { title: "Lego Millennium Falcon", details: "" }, // already on the list: must not duplicate
+    ],
+    discussedTalkingPointIds: [], referencedMemoryIds: [], safetyConcern: false, safetyNote: "" };
   await page.getByRole("button", { name: "Call Santa Again" }).click();
   await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
   await peer.evaluate(() => {
@@ -632,6 +661,20 @@ await check("post-call memories are only proposed, and only approved ones reach 
   await kid(`/api/call/${s2.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
   const call = (await db.query(`SELECT summary, "summaryStatus" FROM "Call" WHERE summary IS NOT NULL ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
   assert(call?.summaryStatus === "PROPOSED", "summary should await parent approval");
+});
+await check("wishes a kid tells Santa land on the list for review, then reach Santa once kept", async () => {
+  const heard = (await db.query(`SELECT id, approved, source, details FROM "WishListItem" WHERE "childId"=$1 AND title='Bauer Vapor hockey skates'`, [aliceId])).rows;
+  assert(heard.length === 1 && heard[0].approved === false && heard[0].source === "CALL" && heard[0].details === "size 8, black", `heard ${JSON.stringify(heard)}`);
+  const dupes = (await db.query(`SELECT count(*)::int n FROM "WishListItem" WHERE "childId"=$1 AND title ILIKE 'lego millennium falcon'`, [aliceId])).rows[0].n;
+  assert(dupes === 1, `duplicate wish created (${dupes})`);
+  const s1 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
+  assert(!mock.sessions.at(-1).session.instructions.includes("Bauer Vapor"), "unreviewed wish reached Santa");
+  await kid(`/api/call/${s1.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+  const keep = await parent(`/api/parent/wishes/${heard[0].id}`, { method: "PATCH", body: { approved: true } });
+  assert(keep.status === 200, `keep ${keep.status}`);
+  const s2 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
+  assert(mock.sessions.at(-1).session.instructions.includes("Bauer Vapor hockey skates (size 8, black)"), "kept wish missing from next call");
+  await kid(`/api/call/${s2.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
 });
 await check("client enforces the call duration limit", async () => {
   await parent("/api/parent/settings", { method: "PATCH", body: { maxCallMinutes: 1 } });
@@ -682,6 +725,11 @@ await check("mobile call screen and dashboard render", async () => {
   await p.goto(`${BASE}/parent/children/${aliceId}?tab=talking-points`);
   await p.getByText("Santa's talking points").waitFor();
   await p.screenshot({ path: join(SHOTS, "22-talking-points.png") });
+  await p.goto(`${BASE}/parent/children/${aliceId}?tab=wishes`);
+  await p.getByText("wish list", { exact: false }).first().waitFor();
+  await p.screenshot({ path: join(SHOTS, "28-wish-list.png") });
+  await p.goto(`${BASE}/parent/wishlists`);
+  await p.screenshot({ path: join(SHOTS, "29-wish-lists-all.png"), fullPage: true });
   await p.goto(`${BASE}/parent/memories`);
   await p.screenshot({ path: join(SHOTS, "23-memories.png") });
   await p.goto(`${BASE}/parent/personality`);

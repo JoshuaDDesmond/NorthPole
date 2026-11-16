@@ -18,6 +18,12 @@ export async function assembleCallContext(params: {
       family: { include: { personality: true } },
       talkingPoints: true,
       memories: { where: { status: "APPROVED" } },
+      // Santa only ever sees the title and details of approved, mentionable wishes.
+      wishes: {
+        where: { approved: true, santaCanMention: true },
+        select: { id: true, title: true, details: true, topWish: true, santaCanMention: true, approved: true },
+        orderBy: [{ topWish: "desc" }, { sortOrder: "asc" }],
+      },
     },
   });
   if (!child) return null;
@@ -50,6 +56,7 @@ export async function assembleCallContext(params: {
     child: { ...child, customFields },
     talkingPoints: child.talkingPoints,
     memories: child.memories,
+    wishes: child.wishes,
     call: {
       now,
       timezone: child.family.timezone,

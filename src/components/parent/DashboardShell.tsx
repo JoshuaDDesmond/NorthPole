@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Clock, Home, LogOut, Settings, Sparkles, SlidersHorizontal, Users } from "lucide-react";
+import { BookOpen, Clock, Gift, Home, LogOut, Settings, SlidersHorizontal, Sparkles, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
@@ -11,17 +11,19 @@ const ALL_NAV = [
   { href: "/parent", label: "Overview", icon: Home, exact: true },
   { href: "/parent/children", label: "Children", icon: Users },
   { href: "/parent/memories", label: "Santa's Memory", icon: Sparkles },
+  { href: "/parent/wishlists", label: "Wish Lists", icon: Gift },
   { href: "/parent/personality", label: "Personality", icon: SlidersHorizontal, ownerOnly: true },
   { href: "/parent/history", label: "Call History", icon: Clock },
   { href: "/parent/settings", label: "Settings", icon: Settings },
 ];
 
-export function DashboardShell({ children, isOwner, parentName, familyName, pendingMemories, callingEnabled }: {
+export function DashboardShell({ children, isOwner, parentName, familyName, pendingMemories, pendingWishes = 0, callingEnabled }: {
   children: ReactNode;
   isOwner: boolean;
   parentName: string;
   familyName: string;
   pendingMemories: number;
+  pendingWishes?: number;
   callingEnabled: boolean;
 }) {
   const pathname = usePathname();
@@ -63,6 +65,9 @@ export function DashboardShell({ children, isOwner, parentName, familyName, pend
                 {href === "/parent/memories" && pendingMemories > 0 && (
                   <span className="rounded-full bg-gold px-1.5 text-[11px] font-semibold text-ink">{pendingMemories}</span>
                 )}
+                {href === "/parent/wishlists" && pendingWishes > 0 && (
+                  <span className="rounded-full bg-gold px-1.5 text-[11px] font-semibold text-ink">{pendingWishes}</span>
+                )}
               </Link>
             ))}
           </nav>
@@ -101,8 +106,10 @@ export function DashboardShell({ children, isOwner, parentName, familyName, pend
           {NAV.map(({ href, label, icon: Icon, exact }) => (
             <Link key={href} href={href} className={`relative flex flex-col items-center gap-0.5 py-1 text-[10px] ${isActive(href, exact) ? "text-gold" : "text-mist"}`}>
               <Icon className="h-5 w-5" strokeWidth={1.7} />
-              <span className="truncate">{label.replace("Santa's ", "").replace("Call ", "")}</span>
-              {href === "/parent/memories" && pendingMemories > 0 && <span className="absolute right-[22%] top-0.5 h-2 w-2 rounded-full bg-gold" />}
+              <span className="truncate">{label.replace("Santa's ", "").replace("Call ", "").replace("Wish Lists", "Wishes")}</span>
+              {((href === "/parent/memories" && pendingMemories > 0) || (href === "/parent/wishlists" && pendingWishes > 0)) && (
+                <span className="absolute right-[22%] top-0.5 h-2 w-2 rounded-full bg-gold" />
+              )}
             </Link>
           ))}
         </nav>

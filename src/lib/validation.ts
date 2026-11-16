@@ -156,3 +156,27 @@ export const dataDeletionSchema = z.object({
   scope: z.enum(["call_history", "memories", "all_child_data", "everything"]),
   confirm: z.literal("DELETE"),
 });
+
+const httpUrl = z
+  .string()
+  .trim()
+  .max(2000)
+  .refine((v) => {
+    try {
+      const u = new URL(v);
+      return u.protocol === "https:" || u.protocol === "http:";
+    } catch {
+      return false;
+    }
+  }, "Use a full web link starting with https://");
+
+export const wishSchema = z.object({
+  title: text(160).min(1, "What's the wish?"),
+  details: optText(500),
+  link: z.union([httpUrl, z.literal("")]).nullable().optional(),
+  notes: optText(1000),
+  topWish: z.boolean().optional(),
+  purchased: z.boolean().optional(),
+  santaCanMention: z.boolean().optional(),
+});
+export const wishPatchSchema = wishSchema.partial().extend({ approved: z.literal(true).optional() });

@@ -57,6 +57,15 @@ export type MemoryInput = {
   lastReferencedAt: Date | null;
 };
 
+export type WishInput = {
+  id: string;
+  title: string;
+  details: string;
+  topWish: boolean;
+  santaCanMention: boolean;
+  approved: boolean;
+};
+
 export type CallContextInput = {
   now: Date;
   timezone: string;
@@ -72,11 +81,22 @@ export type BuildInput = {
   child: ChildInput;
   talkingPoints: TalkingPointInput[];
   memories: MemoryInput[];
+  /** Optional so older callers keep working. Links, notes and purchase status are never passed in. */
+  wishes?: WishInput[];
   call: CallContextInput;
 };
 
 export const MAX_TALKING_POINTS = 6;
 export const MAX_MEMORIES = 10;
+export const MAX_WISHES = 15;
+
+/** Only parent-approved wishes Santa is allowed to mention, top wishes first. */
+export function selectWishes(wishes: WishInput[]): WishInput[] {
+  return wishes
+    .filter((w) => w.approved && w.santaCanMention && clean(w.title))
+    .sort((a, b) => Number(b.topWish) - Number(a.topWish))
+    .slice(0, MAX_WISHES);
+}
 const PRIORITY_RANK = { HIGH: 0, NORMAL: 1, LOW: 2 } as const;
 
 const clean = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
@@ -162,6 +182,7 @@ export function buildSantaInstructions(input: BuildInput): string {
   const name = clean(child.nickname) || clean(child.firstName);
   const points = selectTalkingPoints(input.talkingPoints, call.now);
   const memories = selectMemories(input.memories);
+  const wishes = selectWishes(input.wishes ?? []);
   const days = daysUntilChristmas(call.now, call.timezone);
   const avoid = [clean(p.topicsToAvoid), clean(child.topicsToAvoid)].filter(Boolean).join("; ");
   const nextCall = [clean(p.nextCallInstructions), clean(child.nextCallInstructions)].filter(Boolean).join(" ");
@@ -231,6 +252,16 @@ ${points
 These came from previous conversations and were confirmed by the family. Reference at most one or two, casually ("last time you told me…"), and only when relevant. Don't repeat the same memory every call.
 ${memories.map((m) => `- ${clean(m.content)}`).join("\n")}`);
   }
+
+  sections.push(`# Christmas wishes
+${
+  wishes.length
+    ? `This is ${name}'s Christmas wish list so far. Use it to show you remember exactly what they asked for ("Still dreaming about those ${clean(wishes[0]!.title)}?"), and ask if anything has changed, moved to the top, or been added. Bring it up once, naturally, not as a checklist.
+${wishes.map((w) => `- ${w.topWish ? "[top wish] " : ""}${clean(w.title)}${clean(w.details) ? ` (${clean(w.details)})` : ""}`).join("\n")}`
+    : `You don't have ${name}'s wish list yet. At a natural moment, ask what they're hoping for this year.`
+}
+- When ${name} mentions something new they want, show real interest and gently confirm the specifics so you get it exactly right: the brand, model, size, color or version ("The blue ones, in a size 8?"). Then say you've made a note of it.
+- Never promise any item, and never say whether they will or won't get something. The best surprises are a mystery.`);
 
   if (avoid) {
     sections.push(`# Topics to avoid

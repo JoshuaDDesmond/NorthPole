@@ -12,6 +12,8 @@ import { requireParentPage } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { childWhere } from "@/lib/parent-data";
 import { ChildManagers } from "@/components/parent/ChildManagers";
+import { WishListEditor } from "@/components/parent/WishListEditor";
+import { toWishView } from "@/lib/wish-view";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,7 @@ export default async function ChildPage({ params }: { params: Promise<{ id: stri
     where: { id, ...childWhere(parent) },
     include: {
       talkingPoints: { orderBy: [{ enabled: "desc" }, { createdAt: "desc" }] },
+      wishes: { orderBy: [{ topWish: "desc" }, { sortOrder: "asc" }, { createdAt: "asc" }] },
       memories: { orderBy: { createdAt: "desc" } },
       access: { select: { parentUserId: true } },
     },
@@ -75,7 +78,7 @@ export default async function ChildPage({ params }: { params: Promise<{ id: stri
       />
       <Suspense>
         <ChildTabs
-          badges={{ memory: pending }}
+          badges={{ memory: pending, wishes: child.wishes.filter((w) => !w.approved).length }}
           panels={{
             profile: (
               <div className="space-y-6">
@@ -101,6 +104,7 @@ export default async function ChildPage({ params }: { params: Promise<{ id: stri
                 }))}
               />
             ),
+            wishes: <WishListEditor childId={child.id} childName={name} wishes={child.wishes.map(toWishView)} />,
             memory: (
               <MemoryReview
                 childId={child.id}
