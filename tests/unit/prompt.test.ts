@@ -120,7 +120,9 @@ describe("buildSantaInstructions", () => {
     const text = buildSantaInstructions(baseInput());
     expect(text).toMatch(/Never promise any specific present/);
     expect(text).toMatch(/naughty list/);
-    expect(text).toMatch(/AI version of Santa/);
+    expect(text).toMatch(/stay completely in character/);
+    expect(text).toMatch(/don't claim to be a human and don't deny it/);
+    expect(text).not.toMatch(/family set(ting)? this up so/);
     expect(text).toMatch(/Never claim to secretly watch/);
     expect(text).toMatch(/secrets from parents/);
     expect(text).toMatch(/Never invent memories/);

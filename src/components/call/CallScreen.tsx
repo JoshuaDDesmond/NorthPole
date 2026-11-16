@@ -321,7 +321,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
         <Sheet title="About this call" onClose={() => setShowInfo(false)}>
           <div className="space-y-3 px-1 text-sm leading-relaxed text-mist">
             <p>
-              The Santa on this line is an <span className="text-snow">AI voice</span> your family set up so you can chat with him. The Christmas spirit part is completely real.
+              Santa&apos;s voice reaches you through some clever <span className="text-snow">AI-powered</span> North Pole technology. The Christmas spirit part is completely real.
             </p>
             <p>Calls aren&apos;t recorded. Your family may see a short note about what you talked about, so Santa can remember it next time.</p>
             <p>If anything ever feels wrong or upsetting, hang up and talk to a grown-up you trust.</p>
