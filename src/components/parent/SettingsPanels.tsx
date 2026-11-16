@@ -179,6 +179,7 @@ export type FamilySettingsValue = {
   timezone: string;
   maxCallMinutes: number;
   dailyMinutesPerChild: number;
+  weeklyMinutesPerChild: number;
   generateMemoryProposals: boolean;
   ambientSound: boolean;
 };
@@ -227,6 +228,15 @@ export function CallingPreferencesPanel({ initial }: { initial: FamilySettingsVa
         <Field label="Daily usage limit (per child)" hint="Total minutes each child can talk to Santa per day.">
           <Select value={v.dailyMinutesPerChild} onChange={(e) => set("dailyMinutesPerChild", Number(e.target.value))}>
             {[5, 10, 15, 20, 30, 45, 60, 90].map((n) => (
+              <option key={n} value={n}>
+                {n} minutes
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Weekly limit (per child)" hint="Total minutes each child can talk to Santa per week. Resets every Monday. This is your main cost control.">
+          <Select value={v.weeklyMinutesPerChild} onChange={(e) => set("weeklyMinutesPerChild", Number(e.target.value))}>
+            {[10, 15, 20, 30, 45, 60, 90, 120].map((n) => (
               <option key={n} value={n}>
                 {n} minutes
               </option>

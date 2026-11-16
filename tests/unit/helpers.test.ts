@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hashSecret, hashToken, newToken, safeEqual, verifySecret } from "@/lib/auth/password";
 import { sniffImageType } from "@/lib/image";
-import { allowedCallSeconds, formatDuration, isValidTimezone, startOfLocalDay } from "@/lib/time";
+import { allowedCallSeconds, formatDuration, isValidTimezone, startOfLocalDay, startOfLocalWeek } from "@/lib/time";
 import { callEndSchema, callStartSchema, childSchema, dataDeletionSchema, talkingPointSchema } from "@/lib/validation";
 import { isKnownVoice, REALTIME_VOICES } from "@/lib/santa/voices";
 
@@ -32,6 +32,20 @@ describe("call limits", () => {
     expect(allowedCallSeconds({ maxCallMinutes: 10, dailyMinutes: 20, usedTodaySeconds: 0 })).toBe(600);
     expect(allowedCallSeconds({ maxCallMinutes: 10, dailyMinutes: 20, usedTodaySeconds: 900 })).toBe(300);
     expect(allowedCallSeconds({ maxCallMinutes: 10, dailyMinutes: 20, usedTodaySeconds: 1500 })).toBe(0);
+  });
+  it("enforces the weekly limit too", () => {
+    expect(allowedCallSeconds({ maxCallMinutes: 10, dailyMinutes: 20, usedTodaySeconds: 0, weeklyMinutes: 20, usedThisWeekSeconds: 900 })).toBe(300);
+    expect(allowedCallSeconds({ maxCallMinutes: 10, dailyMinutes: 20, usedTodaySeconds: 0, weeklyMinutes: 20, usedThisWeekSeconds: 1200 })).toBe(0);
+  });
+  it("starts the calling week on Monday in the family's time zone", () => {
+    // Thursday Dec 10, 2026 at 2pm New York -> Monday Dec 7 at midnight New York (05:00 UTC)
+    expect(startOfLocalWeek(new Date("2026-12-10T19:00:00Z"), "America/New_York").toISOString()).toBe("2026-12-07T05:00:00.000Z");
+    // Monday itself
+    expect(startOfLocalWeek(new Date("2026-12-07T15:00:00Z"), "America/New_York").toISOString()).toBe("2026-12-07T05:00:00.000Z");
+    // Sunday late evening New York is still the previous week
+    expect(startOfLocalWeek(new Date("2026-12-14T03:00:00Z"), "America/New_York").toISOString()).toBe("2026-12-07T05:00:00.000Z");
+    // Across the November daylight-saving change
+    expect(startOfLocalWeek(new Date("2026-11-04T17:00:00Z"), "America/New_York").toISOString()).toBe("2026-11-02T05:00:00.000Z");
   });
   it("subtracts time already used when reconnecting a dropped call", () => {
     expect(allowedCallSeconds({ maxCallMinutes: 10, dailyMinutes: 60, usedTodaySeconds: 200, carriedOverSeconds: 200 })).toBe(400);

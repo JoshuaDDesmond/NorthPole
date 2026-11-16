@@ -15,6 +15,7 @@ const PUBLIC_FIELDS = {
   callingEnabled: true,
   maxCallMinutes: true,
   dailyMinutesPerChild: true,
+  weeklyMinutesPerChild: true,
   generateMemoryProposals: true,
   ambientSound: true,
   santaPhotoUpdatedAt: true,

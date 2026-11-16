@@ -27,6 +27,7 @@ export default async function SettingsPage() {
         callingEnabled: true,
         maxCallMinutes: true,
         dailyMinutesPerChild: true,
+        weeklyMinutesPerChild: true,
         generateMemoryProposals: true,
         ambientSound: true,
         santaPhotoType: true,
@@ -89,6 +90,7 @@ export default async function SettingsPage() {
               timezone: family.timezone,
               maxCallMinutes: family.maxCallMinutes,
               dailyMinutesPerChild: family.dailyMinutesPerChild,
+              weeklyMinutesPerChild: family.weeklyMinutesPerChild,
               generateMemoryProposals: family.generateMemoryProposals,
               ambientSound: family.ambientSound,
             }}

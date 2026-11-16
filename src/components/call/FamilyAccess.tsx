@@ -78,8 +78,10 @@ export function FamilyAccess() {
             {busy ? "Checking…" : "Connect"}
           </button>
         </form>
-        <p className="pb-2 text-center text-[11px] text-mist/60">
-          Parents: <a href="/parent" className="underline decoration-mist/40 underline-offset-2 hover:text-snow">sign in here</a>
+        <p className="pb-2 text-center text-[11px]">
+          <a href="/parent" className="text-mist/40 transition hover:text-mist">
+            Parents
+          </a>
         </p>
       </div>
     </PhoneFrame>

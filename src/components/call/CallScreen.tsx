@@ -194,7 +194,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
           : "ended";
 
   const activityLabel = muted ? "You're muted" : santaSpeaking ? "Santa is talking" : childSpeaking ? "Santa is listening" : " ";
-  const blockingError = error && ["daily_limit", "call_limit", "calling_disabled", "child_disabled", "consent_required", "voice_not_configured"].includes(error.code);
+  const blockingError = error && ["daily_limit", "weekly_limit", "call_limit", "calling_disabled", "child_disabled", "consent_required", "voice_not_configured"].includes(error.code);
 
   return (
     <PhoneFrame>

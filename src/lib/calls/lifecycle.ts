@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import { hangupRealtimeCall } from "../openai/realtime";
-import { startOfLocalDay } from "../time";
+import { startOfLocalDay, startOfLocalWeek } from "../time";
 import type { CallStatus } from "@/generated/prisma/client";
 
 const CONNECT_TIMEOUT_MS = 2 * 60_000;
@@ -15,7 +15,15 @@ export function elapsedSeconds(call: { connectedAt: Date | null; startedAt: Date
 
 /** Seconds of calling the child has used since local midnight (including any active call). */
 export async function usedSecondsToday(childId: string, timezone: string, now = new Date()) {
-  const since = startOfLocalDay(now, timezone);
+  return usedSecondsSince(childId, startOfLocalDay(now, timezone), now);
+}
+
+/** Seconds of calling the child has used since Monday (local), including any active call. */
+export async function usedSecondsThisWeek(childId: string, timezone: string, now = new Date()) {
+  return usedSecondsSince(childId, startOfLocalWeek(now, timezone), now);
+}
+
+async function usedSecondsSince(childId: string, since: Date, now: Date) {
   const calls = await db.call.findMany({
     where: { childId, startedAt: { gte: since }, connectedAt: { not: null } },
     select: { status: true, durationSec: true, connectedAt: true, startedAt: true },

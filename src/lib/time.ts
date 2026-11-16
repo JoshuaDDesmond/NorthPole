@@ -20,6 +20,18 @@ export function startOfLocalDay(now: Date, timezone: string): Date {
   return new Date(Date.UTC(parts.year!, parts.month! - 1, parts.day!) - offsetMs);
 }
 
+/** UTC instant of local midnight on the most recent Monday (start of the calling week). */
+export function startOfLocalWeek(now: Date, timezone: string): Date {
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" }).format(now);
+  const daysSinceMonday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(weekday);
+  // Step back day by day via local midnights so daylight-saving shifts are handled.
+  let start = startOfLocalDay(now, timezone);
+  for (let i = 0; i < Math.max(0, daysSinceMonday); i++) {
+    start = startOfLocalDay(new Date(start.getTime() - 12 * 3600_000), timezone);
+  }
+  return start;
+}
+
 export function isValidTimezone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
@@ -42,8 +54,16 @@ export function formatDuration(totalSeconds: number): string {
  * Seconds a child may talk on the next call: the smaller of the per-call cap
  * and what remains of today's allowance. Never negative.
  */
-export function allowedCallSeconds(opts: { maxCallMinutes: number; dailyMinutes: number; usedTodaySeconds: number; carriedOverSeconds?: number }) {
+export function allowedCallSeconds(opts: {
+  maxCallMinutes: number;
+  dailyMinutes: number;
+  usedTodaySeconds: number;
+  weeklyMinutes?: number;
+  usedThisWeekSeconds?: number;
+  carriedOverSeconds?: number;
+}) {
   const perCall = opts.maxCallMinutes * 60 - (opts.carriedOverSeconds ?? 0);
   const remainingToday = opts.dailyMinutes * 60 - opts.usedTodaySeconds;
-  return Math.max(0, Math.min(perCall, remainingToday));
+  const remainingThisWeek = opts.weeklyMinutes != null ? opts.weeklyMinutes * 60 - (opts.usedThisWeekSeconds ?? 0) : Infinity;
+  return Math.max(0, Math.min(perCall, remainingToday, remainingThisWeek));
 }

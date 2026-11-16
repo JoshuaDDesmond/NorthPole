@@ -70,6 +70,7 @@ model Family {
   callingEnabled          Boolean @default(true)
   maxCallMinutes          Int     @default(10)
   dailyMinutesPerChild    Int     @default(20)
+  weeklyMinutesPerChild   Int     @default(20) // resets Monday, family time zone
   generateMemoryProposals Boolean @default(true)
   ambientSound            Boolean @default(false)
   elevenAgentId           String? // ElevenLabs agent created by the app

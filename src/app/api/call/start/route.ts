@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { assertSameOrigin, handle, HttpError, json, notFound, parseJson } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
 import { callStartSchema } from "@/lib/validation";
-import { finishCall, sweepCalls, usedSecondsToday } from "@/lib/calls/lifecycle";
+import { finishCall, sweepCalls, usedSecondsThisWeek, usedSecondsToday } from "@/lib/calls/lifecycle";
 import { allowedCallSeconds } from "@/lib/time";
 import { assembleCallContext } from "@/lib/santa/context";
 import { createRealtimeCall, safetyIdentifier } from "@/lib/openai/realtime";
@@ -60,21 +60,25 @@ export const POST = handle(async (req: NextRequest) => {
     }
   }
 
-  const used = await usedSecondsToday(child.id, family.timezone);
+  const [used, usedWeek] = await Promise.all([usedSecondsToday(child.id, family.timezone), usedSecondsThisWeek(child.id, family.timezone)]);
   const allowed = allowedCallSeconds({
     maxCallMinutes: family.maxCallMinutes,
     dailyMinutes: family.dailyMinutesPerChild,
     usedTodaySeconds: used,
+    weeklyMinutes: family.weeklyMinutesPerChild,
+    usedThisWeekSeconds: usedWeek,
     carriedOverSeconds: carriedOver,
   });
   if (allowed < MIN_CALL_SECONDS) {
-    throw new HttpError(
-      429,
-      carriedOver > 0 && used < family.dailyMinutesPerChild * 60 ? "call_limit" : "daily_limit",
-      carriedOver > 0
-        ? "That was the end of this call's time. You can call Santa again a little later."
-        : "That's all the North Pole calling time for today. Santa would love to hear from you tomorrow!",
-    );
+    const weekOut = family.weeklyMinutesPerChild * 60 - usedWeek < MIN_CALL_SECONDS;
+    const dayOut = family.dailyMinutesPerChild * 60 - used < MIN_CALL_SECONDS;
+    if (weekOut) {
+      throw new HttpError(429, "weekly_limit", "That's all your North Pole calling time for this week. Santa would love to hear from you next week!");
+    }
+    if (dayOut || carriedOver === 0) {
+      throw new HttpError(429, "daily_limit", "That's all the North Pole calling time for today. Santa would love to hear from you tomorrow!");
+    }
+    throw new HttpError(429, "call_limit", "That was the end of this call's time. You can call Santa again a little later.");
   }
 
   const provider = env.voiceProvider;

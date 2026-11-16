@@ -295,6 +295,12 @@ await check("wish list items save with links, and links must be real web links",
   assert(list.json.wishes.length === 2, `list ${list.json.wishes.length}`);
 });
 
+await check("weekly limit defaults to 20 minutes per child", async () => {
+  const r = await parent("/api/parent/settings");
+  assert(r.json.family.weeklyMinutesPerChild === 20, JSON.stringify(r.json.family));
+  await parent("/api/parent/settings", { method: "PATCH", body: { weeklyMinutesPerChild: 120 } });
+});
+
 await check("calls are blocked until a parent gives consent", async () => {
   await parent("/api/parent/access-code", { method: "POST", body: { code: "reindeer-games" } });
   const k = client();
@@ -485,6 +491,12 @@ await check("daily usage limit blocks further calls", async () => {
   const r = await kid("/api/call/start", { method: "POST", body: { childId: benId, sdp: fakeOffer } });
   assert(r.status === 429 && r.json.error.code === "daily_limit", `status ${r.status} ${r.text}`);
   await parent("/api/parent/settings", { method: "PATCH", body: { dailyMinutesPerChild: 30 } });
+});
+await check("weekly usage limit blocks further calls with a friendly message", async () => {
+  await parent("/api/parent/settings", { method: "PATCH", body: { weeklyMinutesPerChild: 10 } });
+  const r = await kid("/api/call/start", { method: "POST", body: { childId: benId, sdp: fakeOffer } });
+  assert(r.status === 429 && r.json.error.code === "weekly_limit" && /this week/.test(r.json.error.message), `status ${r.status} ${r.text}`);
+  await parent("/api/parent/settings", { method: "PATCH", body: { weeklyMinutesPerChild: 120 } });
 });
 await check("emergency off switch ends live calls and blocks new ones", async () => {
   const r = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
