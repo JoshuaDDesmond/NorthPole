@@ -91,8 +91,6 @@ export default async function Overview() {
         )
       )}
 
-      {usage && <UsageCard usage={usage} />}
-
       <div className="grid items-start gap-6 md:grid-cols-2">
         <Card>
           <CardHeader
@@ -168,6 +166,8 @@ export default async function Overview() {
           </Card>
         </div>
       </div>
+
+      {usage && <UsageCard usage={usage} />}
     </div>
   );
 }
