@@ -92,3 +92,15 @@ describe("voices", () => {
     expect(REALTIME_VOICES.length).toBeGreaterThan(5);
   });
 });
+
+describe("database url parsing", async () => {
+  const { parseDatabaseUrl } = await import("@/lib/db");
+  it("moves Prisma's schema parameter out of the connection string", () => {
+    const r = parseDatabaseUrl("postgresql://u:p@host:6543/postgres?schema=northpole&sslmode=require");
+    expect(r.schema).toBe("northpole");
+    expect(r.connectionString).toBe("postgresql://u:p@host:6543/postgres?sslmode=require");
+  });
+  it("treats public as the default schema", () => {
+    expect(parseDatabaseUrl("postgresql://u:p@localhost/db?schema=public").schema).toBeUndefined();
+  });
+});
