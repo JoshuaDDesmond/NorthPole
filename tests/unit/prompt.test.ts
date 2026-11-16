@@ -127,6 +127,16 @@ describe("buildSantaInstructions", () => {
     expect(text).toMatch(/Never invent memories/);
   });
 
+  it("keeps the call moving: good-this-year and Christmas wish come early", () => {
+    const text = buildSantaInstructions(baseInput());
+    expect(text).toMatch(/busiest time of year/);
+    expect(text).toMatch(/have you been good this year/);
+    expect(text).toMatch(/by about the one-minute mark/);
+    expect(text).toMatch(/what they're hoping for this Christmas/);
+    expect(text).toMatch(/ONE more thing/);
+    expect(text).toMatch(/Ask one question at a time/);
+  });
+
   it("tells Santa to sound like an older man", () => {
     const text = buildSantaInstructions(baseInput());
     expect(text).toMatch(/late sixties/);
