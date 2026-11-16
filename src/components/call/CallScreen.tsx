@@ -278,9 +278,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
               <CallButton onClick={() => void startCall()} />
               <div className="flex flex-col items-center gap-1 text-center">
                 <p className="text-sm text-mist">Your private line to the North Pole</p>
-                <p className="text-[11px] text-mist/60">
-                  Calling as {childName} · An AI-powered Santa experience
-                </p>
+                <p className="text-[11px] text-mist/60">Calling as {childName}</p>
               </div>
             </>
           )}
@@ -294,7 +292,6 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
               disabled={view !== "connected"}
             />
           )}
-          {view === "ended" && <p className="text-[11px] text-mist/60">An AI-powered Santa experience</p>}
         </footer>
       </div>
 

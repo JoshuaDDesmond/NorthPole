@@ -39,7 +39,6 @@ export function CallerPicker({ callers, photoUrl }: { callers: Caller[]; photoUr
             </ul>
           )}
         </section>
-        <p className="pb-2 text-center text-[11px] text-mist/60">An AI-powered Santa experience</p>
       </div>
     </PhoneFrame>
   );
