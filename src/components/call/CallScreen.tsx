@@ -318,7 +318,6 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
         <Sheet title="About this call" onClose={() => setShowInfo(false)}>
           <div className="space-y-3 px-1 text-sm leading-relaxed text-mist">
             <p>This is your private line to Santa&apos;s Workshop. Santa loves hearing what you&apos;ve been up to, so call whenever you like.</p>
-            <p>If anything ever feels wrong or upsetting, hang up and talk to a grown-up you trust.</p>
           </div>
         </Sheet>
       )}
