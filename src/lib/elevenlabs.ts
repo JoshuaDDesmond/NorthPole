@@ -181,3 +181,58 @@ export async function checkElevenLabs(agentId: string | null): Promise<{ configu
   if (res.status === 404) return { configured: true, ok: false, model, message: "Santa's agent wasn't found. Press Connect ElevenLabs to recreate it." };
   return { configured: true, ok: false, model, message: `ElevenLabs responded with status ${res.status}.` };
 }
+
+export type ElevenSubscription = {
+  ok: true;
+  tier: string;
+  status: string;
+  creditsUsed: number;
+  creditsLimit: number;
+  resetsAt: string | null;
+  currency: string;
+  overage: string | null;
+  nextInvoice: string | null;
+};
+
+function money(cents: number | null | undefined, currency: string) {
+  if (cents == null) return null;
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
+}
+
+/** Live plan usage for the owner's dashboard. Never throws; returns a readable reason instead. */
+export async function getSubscription(): Promise<ElevenSubscription | { ok: false; message: string }> {
+  if (!env.elevenLabsApiKey) return { ok: false, message: "ElevenLabs isn't connected." };
+  let res: Response;
+  try {
+    res = await el("/v1/user/subscription", { timeoutMs: 8_000 });
+  } catch {
+    return { ok: false, message: "Couldn't reach ElevenLabs right now." };
+  }
+  if (!res.ok) {
+    const detail = await errorDetail(res);
+    return { ok: false, message: detail ? `ElevenLabs didn't share plan usage: ${detail}.` : `ElevenLabs didn't share plan usage (status ${res.status}).` };
+  }
+  const b = (await res.json()) as {
+    tier?: string;
+    status?: string;
+    character_count?: number;
+    character_limit?: number;
+    next_character_count_reset_unix?: number | null;
+    currency?: string | null;
+    current_overage?: { amount?: string; currency?: string } | null;
+    next_invoice?: { amount_due_cents?: number } | null;
+  };
+  const currency = (b.currency ?? b.current_overage?.currency ?? "usd").toLowerCase();
+  const overageAmount = Number(b.current_overage?.amount ?? 0);
+  return {
+    ok: true,
+    tier: b.tier ?? "unknown",
+    status: b.status ?? "unknown",
+    creditsUsed: b.character_count ?? 0,
+    creditsLimit: b.character_limit ?? 0,
+    resetsAt: b.next_character_count_reset_unix ? new Date(b.next_character_count_reset_unix * 1000).toISOString() : null,
+    currency,
+    overage: overageAmount > 0 ? new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(overageAmount) : null,
+    nextInvoice: money(b.next_invoice?.amount_due_cents, currency),
+  };
+}

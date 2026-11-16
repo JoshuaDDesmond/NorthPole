@@ -1,6 +1,5 @@
-/** Returns the UTC instant of local midnight (start of "today") in the given IANA timezone. */
-export function startOfLocalDay(now: Date, timezone: string): Date {
-  const parts = new Intl.DateTimeFormat("en-US", {
+function localParts(at: Date, timezone: string) {
+  return new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     year: "numeric",
     month: "numeric",
@@ -10,14 +9,28 @@ export function startOfLocalDay(now: Date, timezone: string): Date {
     second: "numeric",
     hourCycle: "h23",
   })
-    .formatToParts(now)
+    .formatToParts(at)
     .reduce<Record<string, number>>((acc, p) => {
       if (p.type !== "literal") acc[p.type] = Number(p.value);
       return acc;
     }, {});
-  const localAsUtc = Date.UTC(parts.year!, parts.month! - 1, parts.day!, parts.hour!, parts.minute!, parts.second!);
-  const offsetMs = localAsUtc - Math.floor(now.getTime() / 1000) * 1000;
-  return new Date(Date.UTC(parts.year!, parts.month! - 1, parts.day!) - offsetMs);
+}
+
+/** The time zone's offset from UTC (ms) at a given instant. */
+function offsetAt(at: Date, timezone: string) {
+  const p = localParts(at, timezone);
+  const localAsUtc = Date.UTC(p.year!, p.month! - 1, p.day!, p.hour! % 24, p.minute!, p.second!);
+  return localAsUtc - Math.floor(at.getTime() / 1000) * 1000;
+}
+
+/** Returns the UTC instant of local midnight (start of "today") in the given IANA timezone. */
+export function startOfLocalDay(now: Date, timezone: string): Date {
+  const p = localParts(now, timezone);
+  const midnightAsUtc = Date.UTC(p.year!, p.month! - 1, p.day!);
+  // Use the offset in effect at midnight itself, which differs from "now" on daylight-saving days.
+  let guess = midnightAsUtc - offsetAt(now, timezone);
+  guess = midnightAsUtc - offsetAt(new Date(guess), timezone);
+  return new Date(guess);
 }
 
 /** UTC instant of local midnight on the most recent Monday (start of the calling week). */
@@ -29,6 +42,14 @@ export function startOfLocalWeek(now: Date, timezone: string): Date {
   for (let i = 0; i < Math.max(0, daysSinceMonday); i++) {
     start = startOfLocalDay(new Date(start.getTime() - 12 * 3600_000), timezone);
   }
+  return start;
+}
+
+/** UTC instant of local midnight on the 1st of the current month. */
+export function startOfLocalMonth(now: Date, timezone: string): Date {
+  const dayOfMonth = Number(new Intl.DateTimeFormat("en-US", { timeZone: timezone, day: "numeric" }).format(now));
+  let start = startOfLocalDay(now, timezone);
+  for (let i = 1; i < dayOfMonth; i++) start = startOfLocalDay(new Date(start.getTime() - 12 * 3600_000), timezone);
   return start;
 }
 

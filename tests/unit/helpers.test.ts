@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hashSecret, hashToken, newToken, safeEqual, verifySecret } from "@/lib/auth/password";
 import { sniffImageType } from "@/lib/image";
-import { allowedCallSeconds, formatDuration, isValidTimezone, startOfLocalDay, startOfLocalWeek } from "@/lib/time";
+import { allowedCallSeconds, formatDuration, isValidTimezone, startOfLocalDay, startOfLocalMonth, startOfLocalWeek } from "@/lib/time";
 import { callEndSchema, callStartSchema, childSchema, dataDeletionSchema, talkingPointSchema } from "@/lib/validation";
 import { isKnownVoice, REALTIME_VOICES } from "@/lib/santa/voices";
 
@@ -46,6 +46,17 @@ describe("call limits", () => {
     expect(startOfLocalWeek(new Date("2026-12-14T03:00:00Z"), "America/New_York").toISOString()).toBe("2026-12-07T05:00:00.000Z");
     // Across the November daylight-saving change
     expect(startOfLocalWeek(new Date("2026-11-04T17:00:00Z"), "America/New_York").toISOString()).toBe("2026-11-02T05:00:00.000Z");
+  });
+  it("finds local midnight correctly on daylight-saving change days", () => {
+    // Nov 1, 2026 (clocks fall back at 2am): midnight was still PDT (UTC-7)
+    expect(startOfLocalDay(new Date("2026-11-01T20:00:00Z"), "America/Los_Angeles").toISOString()).toBe("2026-11-01T07:00:00.000Z");
+    // Mar 8, 2026 (clocks spring forward at 2am): midnight was still PST (UTC-8)
+    expect(startOfLocalDay(new Date("2026-03-08T20:00:00Z"), "America/Los_Angeles").toISOString()).toBe("2026-03-08T08:00:00.000Z");
+  });
+  it("finds the start of the month in the family's time zone", () => {
+    expect(startOfLocalMonth(new Date("2026-12-10T19:00:00Z"), "America/New_York").toISOString()).toBe("2026-12-01T05:00:00.000Z");
+    // 9pm Nov 30 in Los Angeles is still November there
+    expect(startOfLocalMonth(new Date("2026-12-01T05:00:00Z"), "America/Los_Angeles").toISOString()).toBe("2026-11-01T07:00:00.000Z");
   });
   it("subtracts time already used when reconnecting a dropped call", () => {
     expect(allowedCallSeconds({ maxCallMinutes: 10, dailyMinutes: 60, usedTodaySeconds: 200, carriedOverSeconds: 200 })).toBe(400);

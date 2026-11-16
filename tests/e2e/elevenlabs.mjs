@@ -75,6 +75,13 @@ const mockServer = createServer(async (req, res) => {
     mock.tokens.push({ agent, participant: url.searchParams.get("participant_name") });
     return send(200, { token: `tok_${mock.tokens.length}`, conversation_id: `conv_${mock.tokens.length}` });
   }
+  if (req.method === "GET" && url.pathname === "/v1/user/subscription") {
+    return send(200, {
+      tier: "creator", status: "active", character_count: 12500, character_limit: 100000,
+      next_character_count_reset_unix: 1798761600, currency: "usd",
+      current_overage: { amount: "0", currency: "usd" }, next_invoice: { amount_due_cents: 2200 },
+    });
+  }
   if (req.method === "GET" && url.pathname === "/v2/voices") {
     return send(200, {
       voices: [
@@ -232,6 +239,17 @@ await check("the parent's voice and model choices are used on the next call", as
   await kid(`/api/call/${r.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
   const bad = await owner("/api/parent/personality", { method: "PATCH", body: { elevenLlm: "made-up-model" } });
   assert(bad.status === 400, `bad model ${bad.status}`);
+});
+
+await check("owner sees live plan usage and call minutes; other parents can't", async () => {
+  const r = await owner("/api/parent/usage");
+  const sub = r.json.subscription;
+  assert(r.status === 200 && sub.ok && sub.creditsUsed === 12500 && sub.creditsLimit === 100000 && sub.nextInvoice === "$22.00", r.text);
+  const blocked = await other("/api/parent/usage");
+  assert(blocked.status === 403, `other parent ${blocked.status}`);
+  const page = await owner("/parent");
+  assert(page.text.includes("Usage &amp; spending") || page.text.includes("Usage & spending"), "usage card missing from owner overview");
+  assert(/of calls in (?:<!-- -->)?[A-Z][a-z]+/.test(page.text), "monthly minutes missing");
 });
 
 await check("in the browser, a failed ElevenLabs connection shows an honest error", async () => {

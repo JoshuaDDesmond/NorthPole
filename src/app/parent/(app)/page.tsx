@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { formatDuration } from "@/lib/time";
 import { childWhere } from "@/lib/parent-data";
+import { UsageCard } from "@/components/parent/UsageCard";
+import { familyUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +36,7 @@ export default async function Overview() {
     { done: Boolean(me.consentAt), label: "Review and confirm the parent consent", href: "/parent/settings#consent" },
   ];
   const setupDone = steps.every((s) => s.done);
+  const usage = parent.isOwner ? await familyUsage(familyId) : null;
 
   return (
     <div className="space-y-6">
@@ -87,6 +90,8 @@ export default async function Overview() {
           </Card>
         )
       )}
+
+      {usage && <UsageCard usage={usage} />}
 
       <div className="grid items-start gap-6 md:grid-cols-2">
         <Card>
