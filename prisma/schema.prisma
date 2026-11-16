@@ -1,0 +1,236 @@
+// North Pole Direct Line data model.
+// Data minimization: no audio and no transcripts are ever stored. Child details
+// live only in Child / TalkingPoint / Memory rows that parents control and can delete.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ConversationLength {
+  SHORT
+  MEDIUM
+  LONG
+}
+
+enum Priority {
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum MemoryStatus {
+  PROPOSED
+  APPROVED
+}
+
+enum MemorySource {
+  CALL
+  PARENT
+}
+
+enum CallStatus {
+  CONNECTING
+  ACTIVE
+  COMPLETED
+  FAILED
+  LIMIT_REACHED
+  DISCONNECTED
+  ENDED_BY_PARENT
+}
+
+enum SummaryStatus {
+  NONE
+  PROPOSED
+  APPROVED
+}
+
+model Family {
+  id        String   @id @default(cuid())
+  name      String   @default("Our Family")
+  timezone  String   @default("America/New_York")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Access + safety controls
+  callingEnabled          Boolean   @default(true)
+  parentConsentAt         DateTime?
+  familyAccessCodeHash    String?
+  familyAccessVersion     Int       @default(1)
+  maxCallMinutes          Int       @default(10)
+  dailyMinutesPerChild    Int       @default(20)
+  generateMemoryProposals Boolean   @default(true)
+  ambientSound            Boolean   @default(false)
+
+  // Contact photo (stored in the database so it works on serverless hosts)
+  santaPhoto          Bytes?
+  santaPhotoType      String?
+  santaPhotoUpdatedAt DateTime?
+
+  personality SantaPersonality?
+  parents     ParentUser[]
+  children    Child[]
+  devices     FamilyDevice[]
+}
+
+model SantaPersonality {
+  id                   String             @id @default(cuid())
+  familyId             String             @unique
+  family               Family             @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  voice                String             @default("cedar")
+  customVoiceId        String?
+  humor                Int                @default(3) // 1-5
+  energy               Int                @default(3) // 1-5
+  northPoleReferences  Int                @default(3) // 1-5
+  conversationLength   ConversationLength @default(MEDIUM)
+  topicsToAvoid        String             @default("")
+  nextCallInstructions String             @default("")
+  updatedAt            DateTime           @updatedAt
+}
+
+model ParentUser {
+  id           String          @id @default(cuid())
+  familyId     String
+  family       Family          @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  email        String          @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime        @default(now())
+  lastLoginAt  DateTime?
+  sessions     ParentSession[]
+}
+
+model ParentSession {
+  id         String     @id // sha256 of the opaque cookie token
+  userId     String
+  user       ParentUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime   @default(now())
+  expiresAt  DateTime
+  lastSeenAt DateTime   @default(now())
+
+  @@index([userId])
+}
+
+model FamilyDevice {
+  id            String    @id @default(cuid())
+  familyId      String
+  family        Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  tokenHash     String    @unique
+  label         String    @default("Family device")
+  accessVersion Int
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  calls         Call[]
+
+  @@index([familyId])
+}
+
+model Child {
+  id                   String   @id @default(cuid())
+  familyId             String
+  family               Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  firstName            String
+  nickname             String   @default("")
+  age                  Int?
+  birthday             String   @default("") // free text, e.g. "March 4"
+  parents              String   @default("")
+  siblings             String   @default("")
+  pets                 String   @default("")
+  school               String   @default("")
+  sportsAndTeams       String   @default("")
+  hobbies              String   @default("")
+  favoriteActivities   String   @default("")
+  accomplishments      String   @default("")
+  challengesAndGoals   String   @default("")
+  christmasWishes      String   @default("")
+  traditions           String   @default("")
+  otherDetails         String   @default("")
+  customFields         Json     @default("[]") // [{ label, value }]
+  topicsToAvoid        String   @default("")
+  nextCallInstructions String   @default("")
+  callingEnabled       Boolean  @default(true)
+  sortOrder            Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  talkingPoints TalkingPoint[]
+  memories      Memory[]
+  calls         Call[]
+
+  @@index([familyId])
+}
+
+model TalkingPoint {
+  id              String    @id @default(cuid())
+  childId         String
+  child           Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  topic           String
+  details         String
+  priority        Priority  @default(NORMAL)
+  expiresAt       DateTime?
+  enabled         Boolean   @default(true)
+  lastDiscussedAt DateTime?
+  timesDiscussed  Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([childId])
+}
+
+model Memory {
+  id               String       @id @default(cuid())
+  childId          String
+  child            Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  content          String
+  status           MemoryStatus @default(PROPOSED)
+  source           MemorySource @default(CALL)
+  callId           String?
+  call             Call?        @relation(fields: [callId], references: [id], onDelete: SetNull)
+  createdAt        DateTime     @default(now())
+  reviewedAt       DateTime?
+  lastReferencedAt DateTime?
+
+  @@index([childId, status])
+}
+
+model Call {
+  id              String        @id @default(cuid())
+  childId         String
+  child           Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  deviceId        String?
+  device          FamilyDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  resumedFromId   String?
+  status          CallStatus    @default(CONNECTING)
+  endReason       String?
+  openaiCallId    String?
+  model           String?
+  voice           String?
+  maxSeconds      Int
+  startedAt       DateTime      @default(now())
+  connectedAt     DateTime?
+  endedAt         DateTime?
+  lastHeartbeatAt DateTime?
+  durationSec     Int           @default(0)
+  summary         String?
+  summaryStatus   SummaryStatus @default(NONE)
+  safetyFlag      Boolean       @default(false)
+  safetyNote      String?
+  memories        Memory[]
+
+  @@index([childId, startedAt])
+  @@index([status])
+}
+
+model RateLimitBucket {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+}
