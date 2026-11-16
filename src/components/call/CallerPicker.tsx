@@ -39,6 +39,11 @@ export function CallerPicker({ callers, photoUrl }: { callers: Caller[]; photoUr
             </ul>
           )}
         </section>
+        <p className="pb-2 text-center">
+          <a href="/parent" className="text-[11px] text-mist/40 transition hover:text-mist">
+            Parents
+          </a>
+        </p>
       </div>
     </PhoneFrame>
   );

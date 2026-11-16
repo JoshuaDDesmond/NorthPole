@@ -295,6 +295,11 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
               disabled={view !== "connected"}
             />
           )}
+          {view !== "calling" && view !== "connected" && (
+            <a href="/parent" className="text-[11px] text-mist/40 transition hover:text-mist">
+              Parents
+            </a>
+          )}
         </footer>
       </div>
 
