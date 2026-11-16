@@ -48,6 +48,7 @@ await db.query(`TRUNCATE "Family","RateLimitBucket" CASCADE`);
 
 /* ------------------------------ Mock ElevenLabs ------------------------------ */
 const mock = { agents: new Map(), tokens: [], requests: [] };
+let mockFailCreate = false;
 const mockServer = createServer(async (req, res) => {
   const chunks = [];
   for await (const c of req) chunks.push(c);
@@ -57,6 +58,7 @@ const mockServer = createServer(async (req, res) => {
   if (req.headers["xi-api-key"] !== EL_KEY) return send(401, { detail: "invalid api key" });
   const url = new URL(req.url, "http://mock");
   if (req.method === "POST" && url.pathname === "/v1/convai/agents/create") {
+    if (mockFailCreate) return send(401, { detail: { status: "missing_permissions", message: "The API key you used is missing the permission convai_write to execute this operation." } });
     const id = `agent_test_${mock.agents.size + 1}`;
     mock.agents.set(id, body);
     return send(200, { agent_id: id });
@@ -162,17 +164,22 @@ await check("setup: owner, a child with a wish list, a second parent, a paired d
   assert(pair.status === 200 && childId, `pair ${pair.status}`);
 });
 
-await check("before connecting, calls fail honestly and status explains the next step", async () => {
+await check("before connecting, status explains the next step", async () => {
   const status = await owner("/api/parent/voice-status");
   assert(status.json.provider === "elevenlabs" && status.json.ok === false && /Connect ElevenLabs/.test(status.json.message), JSON.stringify(status.json));
-  const r = await kid("/api/call/start", { method: "POST", body: { childId } });
-  assert(r.status === 503 && r.json.error.code === "voice_not_configured", `start ${r.status} ${r.text}`);
 });
 
 await check("only the owner can connect ElevenLabs or browse voices", async () => {
   const a = await other("/api/parent/elevenlabs/connect", { method: "POST" });
   const b = await other("/api/parent/elevenlabs/voices");
   assert(a.status === 403 && b.status === 403, `${a.status} ${b.status}`);
+});
+
+await check("if agent setup fails, the first call fails honestly (no fake connection)", async () => {
+  mockFailCreate = true;
+  const r = await kid("/api/call/start", { method: "POST", body: { childId } });
+  mockFailCreate = false;
+  assert(r.status === 503 && r.json.error.code === "voice_not_configured", `start ${r.status} ${r.text}`);
 });
 
 await check("Connect ElevenLabs creates a private agent with per-call overrides enabled", async () => {

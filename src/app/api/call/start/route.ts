@@ -9,7 +9,8 @@ import { allowedCallSeconds } from "@/lib/time";
 import { assembleCallContext } from "@/lib/santa/context";
 import { createRealtimeCall, safetyIdentifier } from "@/lib/openai/realtime";
 import { env } from "@/lib/env";
-import { getConversationToken } from "@/lib/elevenlabs";
+import { getConversationToken, upsertAgent } from "@/lib/elevenlabs";
+import { DEFAULT_ELEVEN_LLM, isKnownElevenLlm } from "@/lib/santa/voices";
 
 export const dynamic = "force-dynamic";
 
@@ -78,9 +79,21 @@ export const POST = handle(async (req: NextRequest) => {
 
   const provider = env.voiceProvider;
   if (provider === "openai" && !body.sdp) throw new HttpError(400, "bad_request", "Missing call setup.");
-  const agentId = provider === "elevenlabs" ? (family.elevenAgentId ?? env.elevenLabsAgentId) : null;
+  let agentId = provider === "elevenlabs" ? (family.elevenAgentId ?? env.elevenLabsAgentId) : null;
   if (provider === "elevenlabs" && !agentId) {
-    throw new HttpError(503, "voice_not_configured", "Santa's phone line hasn't been connected yet. A parent needs to finish the voice setup in Settings.");
+    // First ElevenLabs call: set up Santa's agent automatically instead of waiting for a parent.
+    try {
+      const personality = await db.santaPersonality.findUnique({ where: { familyId: family.id } });
+      agentId = await upsertAgent(null, {
+        voiceId: personality?.elevenVoiceId ?? env.elevenLabsVoiceId,
+        llm: personality?.elevenLlm && isKnownElevenLlm(personality.elevenLlm) ? personality.elevenLlm : DEFAULT_ELEVEN_LLM,
+        maxCallMinutes: family.maxCallMinutes,
+      });
+      await db.family.update({ where: { id: family.id }, data: { elevenAgentId: agentId } });
+    } catch (err) {
+      console.error("[elevenlabs] automatic agent setup failed:", err instanceof HttpError ? err.message : "unknown");
+      throw new HttpError(503, "voice_not_configured", "Santa's phone line isn't ready yet. A parent can check Settings → Voice service for details.");
+    }
   }
 
   const ctx = await assembleCallContext({
