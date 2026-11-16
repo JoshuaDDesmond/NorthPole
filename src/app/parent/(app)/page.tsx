@@ -6,29 +6,32 @@ import { requireParentPage } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { formatDuration } from "@/lib/time";
+import { childWhere } from "@/lib/parent-data";
 
 export const dynamic = "force-dynamic";
 
 export default async function Overview() {
   const parent = await requireParentPage();
   const familyId = parent.familyId;
-  const [family, children, liveCalls, pending, recent] = await Promise.all([
+  const kids = childWhere(parent);
+  const [family, me, children, liveCalls, pending, recent] = await Promise.all([
     db.family.findUniqueOrThrow({ where: { id: familyId } }),
+    db.parentUser.findUniqueOrThrow({ where: { id: parent.userId }, select: { accessCodeHash: true, consentAt: true } }),
     db.child.findMany({
-      where: { familyId },
+      where: kids,
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       include: { _count: { select: { talkingPoints: { where: { enabled: true } }, memories: { where: { status: "APPROVED" } }, calls: true } } },
     }),
-    db.call.findMany({ where: { status: "ACTIVE", child: { familyId } }, include: { child: { select: { firstName: true } } } }),
-    db.memory.count({ where: { status: "PROPOSED", child: { familyId } } }),
-    db.call.findMany({ where: { child: { familyId }, connectedAt: { not: null } }, orderBy: { startedAt: "desc" }, take: 4, include: { child: { select: { firstName: true } } } }),
+    db.call.findMany({ where: { status: "ACTIVE", child: kids }, include: { child: { select: { firstName: true } } } }),
+    db.memory.count({ where: { status: "PROPOSED", child: kids } }),
+    db.call.findMany({ where: { child: kids, connectedAt: { not: null } }, orderBy: { startedAt: "desc" }, take: 4, include: { child: { select: { firstName: true } } } }),
   ]);
 
   const steps = [
-    { done: Boolean(env.openaiApiKey), label: "Add your OpenAI API key on the server", href: "/parent/settings" },
-    { done: children.length > 0, label: "Add a child's profile", href: "/parent/children/new" },
-    { done: Boolean(family.familyAccessCodeHash), label: "Set a family access code for the kids' devices", href: "/parent/settings#access" },
-    { done: Boolean(family.parentConsentAt), label: "Review and confirm the parent consent", href: "/parent/settings#consent" },
+    ...(parent.isOwner ? [{ done: Boolean(env.openaiApiKey), label: "Add your OpenAI API key on the server", href: "/parent/settings" }] : []),
+    { done: children.length > 0, label: parent.isOwner ? "Add a child's profile" : "Add your child's profile", href: "/parent/children/new" },
+    { done: Boolean(me.accessCodeHash), label: "Create your device code for your kids' phones or tablets", href: "/parent/settings#access" },
+    { done: Boolean(me.consentAt), label: "Review and confirm the parent consent", href: "/parent/settings#consent" },
   ];
   const setupDone = steps.every((s) => s.done);
 
@@ -75,12 +78,20 @@ export default async function Overview() {
         </Card>
       )}
 
-      <CallingSwitch enabled={family.callingEnabled} />
+      {parent.isOwner ? (
+        <CallingSwitch enabled={family.callingEnabled} />
+      ) : (
+        !family.callingEnabled && (
+          <Card className="border-berry/40">
+            <p className="p-5 text-sm text-snow">Santa&apos;s line is turned off for the whole family right now. The family owner can turn it back on.</p>
+          </Card>
+        )
+      )}
 
       <div className="grid items-start gap-6 md:grid-cols-2">
         <Card>
           <CardHeader
-            title="Children"
+            title={parent.isOwner ? "Children" : "Your children"}
             action={
               <Link href="/parent/children/new" className="inline-flex items-center gap-1.5 text-xs font-medium text-gold hover:text-gold-2">
                 <UserPlus className="h-3.5 w-3.5" /> Add child
@@ -88,7 +99,7 @@ export default async function Overview() {
             }
           />
           {children.length === 0 ? (
-            <p className="px-6 py-8 text-sm text-mist">No children yet. Add one so Santa knows who&apos;s calling.</p>
+            <p className="px-6 py-8 text-sm text-mist">{parent.isOwner ? "No children yet. Add one so Santa knows who's calling." : "No children are assigned to you yet. Add your child, or ask the family owner to give you access."}</p>
           ) : (
             <ul className="divide-y divide-line">
               {children.map((c) => (
@@ -114,11 +125,13 @@ export default async function Overview() {
         </Card>
 
         <div className="space-y-6">
-          <Card>
-            <div className="p-5 sm:px-6">
-              <VoiceStatusCard />
-            </div>
-          </Card>
+          {parent.isOwner && (
+            <Card>
+              <div className="p-5 sm:px-6">
+                <VoiceStatusCard />
+              </div>
+            </Card>
+          )}
           <Card>
             <Link href="/parent/memories" className="flex items-center gap-3 p-5 transition hover:bg-white/[0.03] sm:px-6">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/15">

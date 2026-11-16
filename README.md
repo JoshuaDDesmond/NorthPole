@@ -3,7 +3,7 @@
 A private, mobile-first web app where your kids can call Santa Claus and have a real, two-way voice conversation. Santa already knows them, because you told him through a private parent dashboard called **Santa's Secret Book**.
 
 - **Kids' side (`/`)**: a premium phone-call interface. Pick who's calling, tap the green button, talk.
-- **Parents' side (`/parent`)**: profiles for each child, talking points, memory review, personality, call history, limits, and an emergency off switch.
+- **Parents' side (`/parent`)**: profiles for each child, talking points, memory review, personality, call history, limits, and an emergency off switch. Several parents can each have their own login and manage only their own children.
 
 No phone number or telephony service. Everything runs through the browser's microphone and speakers.
 
@@ -22,9 +22,24 @@ No phone number or telephony service. Everything runs through the browser's micr
    | `CRON_SECRET` | Recommended | Protects the nightly cleanup job |
    | `OPENAI_REALTIME_MODEL` etc. | No | Only if your account can't use the defaults |
 4. **Deploy** (Vercel recommended, steps below).
-5. **Open `/parent/setup`** on your deployed site, enter the `SETUP_TOKEN`, and create your parent account.
-6. In Santa's Secret Book: **add each child**, **set a family access code**, **confirm parent consent**, and optionally **upload your Santa photo** (Settings). The attached portrait is used until you do.
-7. On each child's phone or tablet, open the site and **enter the family code once**. That's it.
+5. **Open `/parent/setup`** on your deployed site, enter the `SETUP_TOKEN`, and create your account. You become the **owner**.
+6. In Santa's Secret Book: **add your children**, **create your device code**, **confirm parent consent**, and optionally **upload your Santa photo** (Settings). The attached portrait is used until you do.
+7. **Add the other parents** (Settings → Parents & access): give each a temporary password and pick which children they manage. On first sign-in they choose their own password, then create their own device code and confirm their own consent.
+8. On each child's phone or tablet, open the site and **enter that child's parent's device code once**. That's it.
+
+### Multiple parents
+
+| | Owner | Parent |
+|---|---|---|
+| Sees and edits children | Every child in the family | Only children assigned to them (and ones they add) |
+| Talking points, memories, call history | All children | Their children only |
+| Device code | Their own; device shows children they manage | Their own; device shows children they manage |
+| Add parents, assign children, reset passwords | Yes | No |
+| Santa's voice and personality, call limits, photo, emergency off switch | Yes | No (view only) |
+| Consent | Their own | Their own, required before their devices can call |
+| Delete data | Their children, or the whole account | Their children only |
+
+A child can be managed by more than one parent (for example, both Mom and Dad). There can be more than one owner, but never fewer than one. Removing a parent disconnects their devices; the children and their data stay.
 
 ### Deploying to Vercel
 
@@ -63,7 +78,8 @@ Open any child → **Preview** to see the exact briefing Santa will receive.
 
 ### Privacy and safety
 - No audio is ever recorded or stored. No transcripts are stored. The conversation text exists only in the browser during the call and, if memory suggestions are on, is sent once to generate the summary (`store: false`) and then discarded. You can switch this off entirely in Settings.
-- Kids' devices use a **family access code**, separate from parent logins. Device sessions can't touch any parent API, and changing the code disconnects all devices.
+- Kids' devices pair with a **parent's device code**, separate from parent logins, and only show that parent's children. Device sessions can't touch any parent API, and changing a code disconnects that parent's devices.
+- Every parent-facing API checks, on the server, that the signed-in parent manages the child in question. Family-wide settings and parent management are owner-only.
 - Parent sessions use HttpOnly, SameSite cookies with 12-hour expiry, scrypt-hashed passwords, CSRF origin checks, and database-backed rate limiting.
 - The whole site is `noindex`, with strict security headers and a locked-down content security policy.
 - Santa is instructed never to promise gifts, use the naughty list as a threat, claim to watch the child, ask for personal info, or encourage secrets from parents. If asked directly, he says he's an AI version of Santa your family set up. If a child mentions something concerning, he encourages them to talk to a trusted adult, and the call is flagged for you in Call History.

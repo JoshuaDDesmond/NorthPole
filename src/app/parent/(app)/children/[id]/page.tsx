@@ -10,6 +10,8 @@ import { TalkingPointsEditor } from "@/components/parent/TalkingPointsEditor";
 import { Badge, PageHeader } from "@/components/ui";
 import { requireParentPage } from "@/lib/auth/session";
 import { db } from "@/lib/db";
+import { childWhere } from "@/lib/parent-data";
+import { ChildManagers } from "@/components/parent/ChildManagers";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +19,17 @@ export default async function ChildPage({ params }: { params: Promise<{ id: stri
   const parent = await requireParentPage();
   const { id } = await params;
   const child = await db.child.findFirst({
-    where: { id, familyId: parent.familyId },
+    where: { id, ...childWhere(parent) },
     include: {
       talkingPoints: { orderBy: [{ enabled: "desc" }, { createdAt: "desc" }] },
       memories: { orderBy: { createdAt: "desc" } },
+      access: { select: { parentUserId: true } },
     },
   });
   if (!child) notFound();
+  const familyParents = parent.isOwner
+    ? await db.parentUser.findMany({ where: { familyId: parent.familyId }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, role: true } })
+    : [];
 
   const customFields = Array.isArray(child.customFields)
     ? (child.customFields as { label?: unknown; value?: unknown }[]).map((f) => ({ label: String(f?.label ?? ""), value: String(f?.value ?? "") }))
@@ -71,7 +77,14 @@ export default async function ChildPage({ params }: { params: Promise<{ id: stri
         <ChildTabs
           badges={{ memory: pending }}
           panels={{
-            profile: <ChildProfileEditor key={child.updatedAt.toISOString()} childId={child.id} initial={initial} />,
+            profile: (
+              <div className="space-y-6">
+                {parent.isOwner && (
+                  <ChildManagers childId={child.id} childName={name} parents={familyParents} selected={child.access.map((a) => a.parentUserId)} />
+                )}
+                <ChildProfileEditor key={child.updatedAt.toISOString()} childId={child.id} initial={initial} />
+              </div>
+            ),
             "talking-points": (
               <TalkingPointsEditor
                 childId={child.id}

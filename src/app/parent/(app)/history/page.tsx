@@ -2,6 +2,7 @@ import { CallHistory } from "@/components/parent/CallHistory";
 import { PageHeader } from "@/components/ui";
 import { requireParentPage } from "@/lib/auth/session";
 import { db } from "@/lib/db";
+import { childWhere } from "@/lib/parent-data";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export default async function HistoryPage() {
   const [family, calls] = await Promise.all([
     db.family.findUniqueOrThrow({ where: { id: parent.familyId }, select: { timezone: true } }),
     db.call.findMany({
-      where: { child: { familyId: parent.familyId } },
+      where: { child: childWhere(parent) },
       orderBy: { startedAt: "desc" },
       take: 200,
       include: { child: { select: { firstName: true, nickname: true } } },

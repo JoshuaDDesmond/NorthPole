@@ -17,6 +17,6 @@ export const POST = handle(async (req: NextRequest) => {
   if (!(await verifySecret(body.currentPassword, user.passwordHash))) {
     throw new HttpError(401, "invalid_password", "Your current password isn't right.");
   }
-  await db.parentUser.update({ where: { id: user.id }, data: { passwordHash: await hashSecret(body.newPassword) } });
+  await db.parentUser.update({ where: { id: user.id }, data: { passwordHash: await hashSecret(body.newPassword), mustChangePassword: false } });
   return json({ ok: true });
 });

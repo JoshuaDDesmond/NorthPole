@@ -26,7 +26,7 @@ export const POST = handle(async (req: NextRequest, ctx: { params: Promise<{ id:
   const device = await requireFamilyDevice();
   const { id } = await ctx.params;
   const body = await parseJson(req, callEndSchema, 600_000);
-  const call = await getFamilyCall(id, device.familyId);
+  const call = await getFamilyCall(id, device);
 
   const wasOpen = call.status === "ACTIVE" || call.status === "CONNECTING";
   const serverElapsed = elapsedSeconds(call);

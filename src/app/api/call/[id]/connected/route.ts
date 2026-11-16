@@ -11,7 +11,7 @@ export const POST = handle(async (req: NextRequest, ctx: { params: Promise<{ id:
   assertSameOrigin(req);
   const device = await requireFamilyDevice();
   const { id } = await ctx.params;
-  const call = await getFamilyCall(id, device.familyId);
+  const call = await getFamilyCall(id, device);
   if (call.status !== "CONNECTING") {
     throw new HttpError(409, "call_not_connecting", "This call is no longer connecting.");
   }

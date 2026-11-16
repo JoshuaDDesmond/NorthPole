@@ -284,7 +284,7 @@ await check("calls are blocked until a parent gives consent", async () => {
   await k("/api/family/access", { method: "POST", body: { code: "reindeer-games" } });
   const r = await k("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: "v=0\r\n".padEnd(40, "x") } });
   assert(r.status === 403 && r.json.error.code === "consent_required", `status ${r.status} ${r.text}`);
-  await parent("/api/parent/settings", { method: "PATCH", body: { parentConsent: true } });
+  await parent("/api/parent/me", { method: "PATCH", body: { consent: true } });
 });
 
 /* ------------------------------ Family access ------------------------------ */
@@ -305,6 +305,116 @@ await check("family code guessing is rate limited", async () => {
   let last = 0;
   for (let i = 0; i < 10; i++) last = (await c("/api/family/access", { method: "POST", body: { code: `guess-${i}` }, headers: { "x-forwarded-for": "203.0.113.9" } })).status;
   assert(last === 429, `last status ${last}`);
+});
+
+/* ------------------------------ Multiple parents ------------------------------ */
+console.log("Multiple parents");
+const jamie = client();
+const jamieDevice = client();
+let caraId;
+await check("owner creates a parent login assigned to one child", async () => {
+  const r = await parent("/api/parent/parents", { method: "POST", body: { name: "Jamie Cousin", email: "jamie@example.com", password: "temporary-pass-1", childIds: [benId] } });
+  assert(r.status === 201 && r.json.parent.role === "PARENT", `status ${r.status} ${r.text}`);
+});
+await check("new parent must replace the temporary password before using the dashboard", async () => {
+  const login = await jamie("/api/parent/auth/login", { method: "POST", body: { email: "jamie@example.com", password: "temporary-pass-1" } });
+  assert(login.status === 200, `login ${login.status}`);
+  const page = await jamie("/parent");
+  assert(page.status === 200 && page.text.includes("temporary password"), "forced password screen not shown");
+  const change = await jamie("/api/parent/password", { method: "POST", body: { currentPassword: "temporary-pass-1", newPassword: "jamies-own-password" } });
+  assert(change.status === 200, `change ${change.status}`);
+  const after = await jamie("/parent");
+  assert(!after.text.includes("You signed in with a temporary password"), "still forced after change");
+});
+await check("a parent only sees the children assigned to them", async () => {
+  const r = await jamie("/api/parent/children");
+  const names = r.json.children.map((c) => c.firstName);
+  assert(names.length === 1 && names[0] === "Ben", `saw ${names}`);
+});
+await check("a parent cannot read or change another parent's child", async () => {
+  const checks = [
+    await jamie(`/api/parent/children/${aliceId}`),
+    await jamie(`/api/parent/children/${aliceId}`, { method: "PATCH", body: { firstName: "Hacked" } }),
+    await jamie(`/api/parent/children/${aliceId}/memories`),
+    await jamie(`/api/parent/children/${aliceId}/preview`),
+    await jamie(`/api/parent/talking-points/${tpId}`, { method: "PATCH", body: { details: "x" } }),
+  ];
+  assert(checks.every((c) => c.status === 404), `statuses ${checks.map((c) => c.status)}`);
+  const alice = (await parent(`/api/parent/children/${aliceId}`)).json.child;
+  assert(alice.firstName === "Alice", "Alice was modified");
+});
+await check("family-wide settings and parent management are owner-only", async () => {
+  const form = new FormData();
+  form.set("photo", new Blob(["x"]), "x.png");
+  const checks = [
+    await jamie("/api/parent/settings", { method: "PATCH", body: { callingEnabled: false } }),
+    await jamie("/api/parent/personality", { method: "PATCH", body: { humor: 5 } }),
+    await jamie("/api/parent/photo", { method: "POST", form }),
+    await jamie("/api/parent/parents", { method: "POST", body: { name: "X", email: "x@example.com", password: "another-long-pass" } }),
+    await jamie(`/api/parent/children/${benId}`, { method: "PATCH", body: { parentIds: [] } }),
+    await jamie("/api/parent/data", { method: "POST", body: { scope: "everything", confirm: "DELETE" } }),
+  ];
+  assert(checks.every((c) => c.status === 403), `statuses ${checks.map((c) => c.status)}`);
+  const people = await jamie("/api/parent/parents");
+  assert(people.json.parents.length === 1 && people.json.parents[0].email === "jamie@example.com", "parent list should only show themselves");
+});
+await check("a parent's new child belongs to them; the owner can see it too", async () => {
+  const r = await jamie("/api/parent/children", { method: "POST", body: { firstName: "Cara", age: 13 } });
+  assert(r.status === 201, `status ${r.status}`);
+  caraId = r.json.child.id;
+  const mine = (await jamie("/api/parent/children")).json.children.map((c) => c.firstName).sort();
+  const owners = (await parent("/api/parent/children")).json.children.map((c) => c.firstName).sort();
+  assert(JSON.stringify(mine) === '["Ben","Cara"]', `jamie sees ${mine}`);
+  assert(owners.includes("Cara") && owners.includes("Alice"), `owner sees ${owners}`);
+});
+await check("device codes are per parent and must be unique", async () => {
+  const dup = await jamie("/api/parent/access-code", { method: "POST", body: { code: "reindeer-games" } });
+  assert(dup.status === 409, `duplicate code status ${dup.status}`);
+  const ok = await jamie("/api/parent/access-code", { method: "POST", body: { code: "cousin-crew" } });
+  assert(ok.status === 200, `set code ${ok.status}`);
+});
+await check("a parent's device shows and calls only that parent's children, after their own consent", async () => {
+  const pair = await jamieDevice("/api/family/access", { method: "POST", body: { code: "cousin-crew" }, headers: { "x-forwarded-for": "198.51.100.7" } });
+  assert(pair.status === 200, `pair ${pair.status}`);
+  const home = await jamieDevice("/");
+  assert(home.text.includes("Ben") && home.text.includes("Cara") && !home.text.includes("Ace"), "caller list not scoped");
+  const sdp = "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n";
+  const blocked = await jamieDevice("/api/call/start", { method: "POST", body: { childId: benId, sdp } });
+  assert(blocked.status === 403 && blocked.json.error.code === "consent_required", `no-consent ${blocked.status}`);
+  await jamie("/api/parent/me", { method: "PATCH", body: { consent: true } });
+  const other = await jamieDevice("/api/call/start", { method: "POST", body: { childId: aliceId, sdp } });
+  assert(other.status === 404, `other parent's child ${other.status}`);
+  const ok = await jamieDevice("/api/call/start", { method: "POST", body: { childId: benId, sdp } });
+  assert(ok.status === 200, `own child ${ok.status} ${ok.text}`);
+  await jamieDevice(`/api/call/${ok.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+  const ownerDeviceForCara = await kid("/api/call/start", { method: "POST", body: { childId: caraId, sdp } });
+  assert(ownerDeviceForCara.status === 404, `owner device calling Cara ${ownerDeviceForCara.status}`);
+});
+await check("owner can reassign children and reset a parent's password", async () => {
+  const list = (await parent("/api/parent/parents")).json.parents;
+  const j = list.find((p) => p.email === "jamie@example.com");
+  const r = await parent(`/api/parent/parents/${j.id}`, { method: "PATCH", body: { childIds: [benId, caraId, aliceId] } });
+  assert(r.status === 200, `reassign ${r.status}`);
+  const names = (await jamie("/api/parent/children")).json.children.map((c) => c.firstName).sort();
+  assert(JSON.stringify(names) === '["Alice","Ben","Cara"]', `after reassign ${names}`);
+  await parent(`/api/parent/parents/${j.id}`, { method: "PATCH", body: { childIds: [benId, caraId] } });
+  const reset = await parent(`/api/parent/parents/${j.id}`, { method: "PATCH", body: { temporaryPassword: "fresh-temp-pass" } });
+  assert(reset.status === 200, `reset ${reset.status}`);
+  const kicked = await jamie("/api/parent/children");
+  assert(kicked.status === 401, `old session still valid: ${kicked.status}`);
+});
+await check("the last owner can't be demoted, and removing a parent disconnects their devices", async () => {
+  const list = (await parent("/api/parent/parents")).json.parents;
+  const me = list.find((p) => p.email === "pat@example.com");
+  const demote = await parent(`/api/parent/parents/${me.id}`, { method: "PATCH", body: { role: "PARENT" } });
+  assert(demote.status === 400, `demote ${demote.status}`);
+  const j = list.find((p) => p.email === "jamie@example.com");
+  const del = await parent(`/api/parent/parents/${j.id}`, { method: "DELETE" });
+  assert(del.status === 200, `delete ${del.status}`);
+  const after = await jamieDevice("/api/call/start", { method: "POST", body: { childId: benId, sdp: "v=0\r\n".padEnd(40, "x") } });
+  assert(after.status === 401, `device still works: ${after.status}`);
+  const ben = await parent(`/api/parent/children/${benId}`);
+  assert(ben.status === 200, "child data should remain");
 });
 
 /* ------------------------------ Call lifecycle (API) ------------------------------ */
@@ -397,7 +507,7 @@ const waitPeer = async (fn, arg, timeout = 8000) => peer.waitForFunction(fn, arg
 await check("kid pairs device with the family code and picks a caller", async () => {
   await page.goto(BASE + "/");
   await page.screenshot({ path: join(SHOTS, "01-family-code-desktop.png") });
-  await page.getByPlaceholder("Family code").fill("reindeer-games");
+  await page.getByPlaceholder("North Pole code").fill("reindeer-games");
   await page.getByRole("button", { name: "Connect" }).click();
   await page.getByText("Who's calling Santa?").waitFor();
   await page.screenshot({ path: join(SHOTS, "02-caller-picker-desktop.png") });
@@ -551,7 +661,7 @@ await check("mobile call screen and dashboard render", async () => {
   const mctx = await browser.newContext({ ...devices["iPhone 13"], permissions: ["microphone"] });
   const m = await mctx.newPage();
   await m.goto(BASE + "/");
-  await m.getByPlaceholder("Family code").fill("reindeer-games");
+  await m.getByPlaceholder("North Pole code").fill("reindeer-games");
   await m.getByRole("button", { name: "Connect" }).click();
   await m.getByRole("link", { name: /Ace/ }).click();
   await m.getByRole("button", { name: "Call Santa" }).waitFor();

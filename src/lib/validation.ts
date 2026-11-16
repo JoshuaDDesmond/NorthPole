@@ -22,10 +22,26 @@ export const setupSchema = z.object({
   timezone: text(64).min(1),
 });
 
+const idList = z.array(z.string().min(1).max(64)).max(50);
+
 export const addParentSchema = z.object({
   name: text(80).min(1),
   email: z.string().trim().toLowerCase().email().max(200),
   password: passwordSchema,
+  role: z.enum(["OWNER", "PARENT"]).default("PARENT"),
+  childIds: idList.default([]),
+});
+
+export const parentPatchSchema = z.object({
+  name: text(80).min(1).optional(),
+  role: z.enum(["OWNER", "PARENT"]).optional(),
+  childIds: idList.optional(),
+  temporaryPassword: passwordSchema.optional(),
+});
+
+export const meSchema = z.object({
+  consent: z.boolean().optional(),
+  name: text(80).min(1).optional(),
 });
 
 export const changePasswordSchema = z.object({
@@ -69,6 +85,8 @@ export const childSchema = z.object({
   topicsToAvoid: optText(1000),
   nextCallInstructions: optText(1000),
   callingEnabled: z.boolean().optional(),
+  /** Owner only: which parents manage this child. */
+  parentIds: idList.optional(),
 });
 export const childPatchSchema = childSchema.partial();
 
@@ -110,7 +128,6 @@ export const familySettingsSchema = z.object({
   dailyMinutesPerChild: z.number().int().min(1).max(240).optional(),
   generateMemoryProposals: z.boolean().optional(),
   ambientSound: z.boolean().optional(),
-  parentConsent: z.boolean().optional(),
 });
 
 export const callSummaryPatchSchema = z.object({

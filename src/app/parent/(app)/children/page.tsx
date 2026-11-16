@@ -3,19 +3,21 @@ import Link from "next/link";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { requireParentPage } from "@/lib/auth/session";
 import { db } from "@/lib/db";
+import { childWhere } from "@/lib/parent-data";
 
 export const dynamic = "force-dynamic";
 
 export default async function ChildrenPage() {
   const parent = await requireParentPage();
   const children = await db.child.findMany({
-    where: { familyId: parent.familyId },
+    where: childWhere(parent),
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     include: {
       _count: {
         select: { talkingPoints: { where: { enabled: true } }, memories: { where: { status: "APPROVED" } } },
       },
       memories: { where: { status: "PROPOSED" }, select: { id: true } },
+      access: { select: { parentUser: { select: { name: true } } } },
     },
   });
 
@@ -23,7 +25,11 @@ export default async function ChildrenPage() {
     <div>
       <PageHeader
         title="Children"
-        description="Each child has their own profile, talking points and memories. Santa only ever sees the details for the child who's calling."
+        description={
+          parent.isOwner
+            ? "Every child in the family. Each has their own profile, talking points and memories, and Santa only ever sees the details for the child who's calling."
+            : "The children you manage. Santa only ever sees the details for the child who's calling."
+        }
         action={
           <Link href="/parent/children/new" className="inline-flex h-10 items-center gap-2 rounded-xl bg-gold px-4 text-sm font-medium text-ink transition hover:bg-gold-2">
             <UserPlus className="h-4 w-4" /> Add child
@@ -64,6 +70,11 @@ export default async function ChildrenPage() {
                   <Badge>{c._count.memories} memories</Badge>
                   {c.memories.length > 0 && <Badge tone="gold">{c.memories.length} to review</Badge>}
                   {!c.callingEnabled && <Badge tone="red">Calling paused</Badge>}
+                  {parent.isOwner && (
+                    <Badge tone={c.access.length ? "neutral" : "red"}>
+                      {c.access.length ? `Managed by ${c.access.map((a) => a.parentUser.name.split(" ")[0]).join(", ")}` : "No parent assigned"}
+                    </Badge>
+                  )}
                 </div>
               </Card>
             </Link>

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const device = await getFamilyDevice();
   if (!device) return <FamilyAccess />;
-  const view = await getFamilyView(device.familyId);
+  const view = await getFamilyView(device);
   if (!view) return <FamilyAccess />;
   if (view.callers.length === 1) redirect(`/call/${view.callers[0]!.id}`);
   return <CallerPicker callers={view.callers} photoUrl={view.photoUrl} />;

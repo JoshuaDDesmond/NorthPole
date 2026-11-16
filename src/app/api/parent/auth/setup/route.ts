@@ -31,7 +31,7 @@ export const POST = handle(async (req: NextRequest) => {
       name: body.familyName,
       timezone: body.timezone,
       personality: { create: {} },
-      parents: { create: { name: body.name, email: body.email, passwordHash } },
+      parents: { create: { name: body.name, email: body.email, passwordHash, role: "OWNER" } },
     },
     include: { parents: true },
   });

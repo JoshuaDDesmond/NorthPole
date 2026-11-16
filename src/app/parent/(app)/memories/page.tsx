@@ -2,13 +2,14 @@ import { MemoryReview } from "@/components/parent/MemoryReview";
 import { PageHeader } from "@/components/ui";
 import { requireParentPage } from "@/lib/auth/session";
 import { db } from "@/lib/db";
+import { childWhere } from "@/lib/parent-data";
 
 export const dynamic = "force-dynamic";
 
 export default async function MemoriesPage() {
   const parent = await requireParentPage();
   const memories = await db.memory.findMany({
-    where: { child: { familyId: parent.familyId } },
+    where: { child: childWhere(parent) },
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     include: { child: { select: { firstName: true, nickname: true } } },
     take: 300,

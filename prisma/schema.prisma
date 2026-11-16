@@ -43,6 +43,11 @@ enum CallStatus {
   ENDED_BY_PARENT
 }
 
+enum ParentRole {
+  OWNER
+  PARENT
+}
+
 enum SummaryStatus {
   NONE
   PROPOSED
@@ -56,15 +61,12 @@ model Family {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Access + safety controls
-  callingEnabled          Boolean   @default(true)
-  parentConsentAt         DateTime?
-  familyAccessCodeHash    String?
-  familyAccessVersion     Int       @default(1)
-  maxCallMinutes          Int       @default(10)
-  dailyMinutesPerChild    Int       @default(20)
-  generateMemoryProposals Boolean   @default(true)
-  ambientSound            Boolean   @default(false)
+  // Family-wide safety controls (owner-managed)
+  callingEnabled          Boolean @default(true)
+  maxCallMinutes          Int     @default(10)
+  dailyMinutesPerChild    Int     @default(20)
+  generateMemoryProposals Boolean @default(true)
+  ambientSound            Boolean @default(false)
 
   // Contact photo (stored in the database so it works on serverless hosts)
   santaPhoto          Bytes?
@@ -93,15 +95,35 @@ model SantaPersonality {
 }
 
 model ParentUser {
-  id           String          @id @default(cuid())
-  familyId     String
-  family       Family          @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  email        String          @unique
-  name         String
-  passwordHash String
-  createdAt    DateTime        @default(now())
-  lastLoginAt  DateTime?
-  sessions     ParentSession[]
+  id                 String          @id @default(cuid())
+  familyId           String
+  family             Family          @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  email              String          @unique
+  name               String
+  passwordHash       String
+  role               ParentRole      @default(PARENT)
+  mustChangePassword Boolean         @default(false)
+  // Each parent has their own device code; a paired device shows only their children.
+  accessCodeHash     String?
+  accessVersion      Int             @default(1)
+  consentAt          DateTime?
+  createdAt          DateTime        @default(now())
+  lastLoginAt        DateTime?
+  sessions           ParentSession[]
+  children           ChildAccess[]
+  devices            FamilyDevice[]
+}
+
+/// Which parents manage which children. A child can have several parents.
+model ChildAccess {
+  parentUserId String
+  parentUser   ParentUser @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
+  childId      String
+  child        Child      @relation(fields: [childId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([parentUserId, childId])
+  @@index([childId])
 }
 
 model ParentSession {
@@ -116,19 +138,22 @@ model ParentSession {
 }
 
 model FamilyDevice {
-  id            String    @id @default(cuid())
+  id            String     @id @default(cuid())
   familyId      String
-  family        Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  tokenHash     String    @unique
-  label         String    @default("Family device")
+  family        Family     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  parentUserId  String
+  parentUser    ParentUser @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
+  tokenHash     String     @unique
+  label         String     @default("Family device")
   accessVersion Int
-  createdAt     DateTime  @default(now())
-  lastSeenAt    DateTime  @default(now())
+  createdAt     DateTime   @default(now())
+  lastSeenAt    DateTime   @default(now())
   expiresAt     DateTime
   revokedAt     DateTime?
   calls         Call[]
 
   @@index([familyId])
+  @@index([parentUserId])
 }
 
 model Child {
@@ -162,6 +187,7 @@ model Child {
   talkingPoints TalkingPoint[]
   memories      Memory[]
   calls         Call[]
+  access        ChildAccess[]
 
   @@index([familyId])
 }

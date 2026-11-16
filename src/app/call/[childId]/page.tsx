@@ -9,7 +9,7 @@ export default async function CallPage({ params }: { params: Promise<{ childId: 
   const { childId } = await params;
   const device = await getFamilyDevice();
   if (!device) redirect("/");
-  const view = await getFamilyView(device.familyId);
+  const view = await getFamilyView(device);
   const caller = view?.callers.find((c) => c.id === childId);
   if (!view || !caller) redirect("/");
   return (

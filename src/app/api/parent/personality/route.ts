@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { requireParent } from "@/lib/auth/session";
+import { requireOwner, requireParent } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { assertSameOrigin, handle, HttpError, json, parseJson } from "@/lib/http";
 import { isKnownVoice } from "@/lib/santa/voices";
@@ -19,7 +19,7 @@ export const GET = handle(async () => {
 
 export const PATCH = handle(async (req: NextRequest) => {
   assertSameOrigin(req);
-  const parent = await requireParent();
+  const parent = await requireOwner();
   const body = await parseJson(req, personalitySchema);
   if (body.voice && !isKnownVoice(body.voice)) throw new HttpError(400, "invalid_voice", "Please choose one of the listed voices.");
   const data = { ...body, customVoiceId: body.customVoiceId === undefined ? undefined : body.customVoiceId?.trim() || null };

@@ -50,18 +50,18 @@ export function FamilyAccess() {
           <div className="text-center">
             <h1 className="text-2xl font-semibold tracking-tight">Connect this device</h1>
             <p className="mx-auto mt-2 max-w-[280px] text-sm leading-relaxed text-mist">
-              Enter your family&apos;s North Pole code. A parent can find it in Santa&apos;s Secret Book.
+              Enter your parent&apos;s North Pole code. They can find it in Santa&apos;s Secret Book under Settings.
             </p>
           </div>
           <label className="w-full max-w-[300px]">
-            <span className="sr-only">Family code</span>
+            <span className="sr-only">North Pole code</span>
             <input
               value={code}
               onChange={(e) => setCode(e.target.value)}
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
-              placeholder="Family code"
+              placeholder="North Pole code"
               className="w-full rounded-2xl border border-line bg-white/[0.04] px-5 py-4 text-center text-lg tracking-wider text-snow placeholder:text-mist/50 focus:border-gold/60 focus:outline-none"
             />
           </label>

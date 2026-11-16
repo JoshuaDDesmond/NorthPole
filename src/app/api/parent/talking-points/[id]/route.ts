@@ -13,7 +13,7 @@ export const PATCH = handle(async (req: NextRequest, ctx: Ctx) => {
   assertSameOrigin(req);
   const parent = await requireParent();
   const { id } = await ctx.params;
-  await getOwnedTalkingPoint(id, parent.familyId);
+  await getOwnedTalkingPoint(id, parent);
   const body = await parseJson(req, talkingPointPatchSchema);
   const talkingPoint = await db.talkingPoint.update({
     where: { id },
@@ -26,7 +26,7 @@ export const DELETE = handle(async (req: NextRequest, ctx: Ctx) => {
   assertSameOrigin(req);
   const parent = await requireParent();
   const { id } = await ctx.params;
-  await getOwnedTalkingPoint(id, parent.familyId);
+  await getOwnedTalkingPoint(id, parent);
   await db.talkingPoint.delete({ where: { id } });
   return json({ ok: true });
 });

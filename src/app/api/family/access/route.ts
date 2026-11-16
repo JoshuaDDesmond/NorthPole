@@ -9,22 +9,22 @@ import { familyAccessSchema } from "@/lib/validation";
 export const dynamic = "force-dynamic";
 
 /**
- * Pairs this browser with the family using the family access code a parent
- * set. The child never sees or needs parent credentials.
+ * Pairs this browser using a parent's device code. The child never sees or needs parent credentials.
  */
 export const POST = handle(async (req: NextRequest) => {
   assertSameOrigin(req);
   await rateLimit(`family-access:${clientIp(req)}`, 8, 15 * 60);
   const { code, label } = await parseJson(req, familyAccessSchema);
 
-  const families = await db.family.findMany({
-    where: { familyAccessCodeHash: { not: null } },
-    select: { id: true, familyAccessCodeHash: true, familyAccessVersion: true },
-    take: 20,
+  // Each parent has their own device code; the device then shows only that parent's children.
+  const parents = await db.parentUser.findMany({
+    where: { accessCodeHash: { not: null } },
+    select: { id: true, familyId: true, accessCodeHash: true, accessVersion: true },
+    take: 50,
   });
-  for (const f of families) {
-    if (await verifySecret(code, f.familyAccessCodeHash)) {
-      await createFamilyDevice(f.id, f.familyAccessVersion, label?.trim() || deviceLabel(req.headers.get("user-agent")));
+  for (const p of parents) {
+    if (await verifySecret(code, p.accessCodeHash)) {
+      await createFamilyDevice(p, label?.trim() || deviceLabel(req.headers.get("user-agent")));
       return json({ ok: true });
     }
   }

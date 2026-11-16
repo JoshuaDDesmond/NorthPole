@@ -27,11 +27,14 @@ export const POST = handle(async (req: NextRequest) => {
   if (!family.callingEnabled) {
     throw new HttpError(503, "calling_disabled", "Santa's line is closed right now. Please check with a parent.");
   }
-  if (!family.parentConsentAt) {
+  const deviceParent = await db.parentUser.findUnique({ where: { id: device.parentUserId }, select: { consentAt: true } });
+  if (!deviceParent?.consentAt) {
     throw new HttpError(403, "consent_required", "A parent needs to finish setting up Santa's line before the first call.");
   }
 
-  const child = await db.child.findFirst({ where: { id: body.childId, familyId: family.id } });
+  const child = await db.child.findFirst({
+    where: { id: body.childId, familyId: family.id, access: { some: { parentUserId: device.parentUserId } } },
+  });
   if (!child) throw notFound("We couldn't find that caller.");
   if (!child.callingEnabled) {
     throw new HttpError(503, "child_disabled", "Santa's line is paused for you right now. Please check with a parent.");

@@ -14,7 +14,7 @@ export const PATCH = handle(async (req: NextRequest, ctx: Ctx) => {
   assertSameOrigin(req);
   const parent = await requireParent();
   const { id } = await ctx.params;
-  await getOwnedMemory(id, parent.familyId);
+  await getOwnedMemory(id, parent);
   const body = await parseJson(req, memoryPatchSchema);
   const memory = await db.memory.update({
     where: { id },
@@ -31,7 +31,7 @@ export const DELETE = handle(async (req: NextRequest, ctx: Ctx) => {
   assertSameOrigin(req);
   const parent = await requireParent();
   const { id } = await ctx.params;
-  await getOwnedMemory(id, parent.familyId);
+  await getOwnedMemory(id, parent);
   await db.memory.delete({ where: { id } });
   return json({ ok: true });
 });

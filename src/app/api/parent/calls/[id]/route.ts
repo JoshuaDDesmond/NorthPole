@@ -14,7 +14,7 @@ export const PATCH = handle(async (req: NextRequest, ctx: Ctx) => {
   assertSameOrigin(req);
   const parent = await requireParent();
   const { id } = await ctx.params;
-  await getOwnedCall(id, parent.familyId);
+  await getOwnedCall(id, parent);
   const body = await parseJson(req, callSummaryPatchSchema);
   const call = await db.call.update({
     where: { id },
@@ -32,7 +32,7 @@ export const DELETE = handle(async (req: NextRequest, ctx: Ctx) => {
   assertSameOrigin(req);
   const parent = await requireParent();
   const { id } = await ctx.params;
-  const call = await getOwnedCall(id, parent.familyId);
+  const call = await getOwnedCall(id, parent);
   if (call.status === "ACTIVE" || call.status === "CONNECTING") {
     await finishCall(id, "ENDED_BY_PARENT", "parent_hangup");
     return json({ ok: true, hungUp: true });

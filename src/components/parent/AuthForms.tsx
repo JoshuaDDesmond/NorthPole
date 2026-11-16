@@ -147,3 +147,61 @@ export function SetupForm() {
     </form>
   );
 }
+
+/** Shown instead of the dashboard until a parent replaces the temporary password they were given. */
+export function ForcePasswordChange({ name }: { name: string }) {
+  const router = useRouter();
+  const [currentPassword, setCurrent] = useState("");
+  const [newPassword, setNew] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPassword !== confirm) return setError("The new passwords don't match.");
+    setBusy(true);
+    setError(null);
+    try {
+      await api("/api/parent/password", { body: { currentPassword, newPassword } });
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  async function signOut() {
+    await api("/api/parent/auth/logout", { method: "POST" }).catch(() => {});
+    router.replace("/parent/login");
+    router.refresh();
+  }
+
+  return (
+    <AuthShell
+      title={`Welcome, ${name.split(" ")[0]}`}
+      subtitle="You signed in with a temporary password. Choose your own to continue."
+      footer={
+        <button onClick={signOut} className="underline decoration-mist/40 underline-offset-2 hover:text-snow">
+          Sign out
+        </button>
+      }
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Temporary password">
+          <Input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrent(e.target.value)} required />
+        </Field>
+        <Field label="New password" hint="At least 10 characters.">
+          <Input type="password" autoComplete="new-password" minLength={10} value={newPassword} onChange={(e) => setNew(e.target.value)} required />
+        </Field>
+        <Field label="Confirm new password">
+          <Input type="password" autoComplete="new-password" minLength={10} value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+        </Field>
+        <ErrorText>{error}</ErrorText>
+        <Button type="submit" variant="primary" className="w-full" loading={busy}>
+          Save password
+        </Button>
+      </form>
+    </AuthShell>
+  );
+}

@@ -1,14 +1,15 @@
 import "server-only";
 import { db } from "./db";
 
-export async function getFamilyView(familyId: string) {
+/** What a paired device shows: only the children managed by the parent whose code paired it. */
+export async function getFamilyView(device: { familyId: string; parentUserId: string }) {
   const family = await db.family.findUnique({
-    where: { id: familyId },
+    where: { id: device.familyId },
     select: {
       ambientSound: true,
       santaPhotoUpdatedAt: true,
       children: {
-        where: { callingEnabled: true },
+        where: { callingEnabled: true, access: { some: { parentUserId: device.parentUserId } } },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         select: { id: true, firstName: true, nickname: true },
       },

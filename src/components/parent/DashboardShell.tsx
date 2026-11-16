@@ -7,23 +7,25 @@ import type { ReactNode } from "react";
 import { api } from "@/lib/client/api";
 import { ToastProvider } from "@/components/ui";
 
-const NAV = [
+const ALL_NAV = [
   { href: "/parent", label: "Overview", icon: Home, exact: true },
   { href: "/parent/children", label: "Children", icon: Users },
   { href: "/parent/memories", label: "Santa's Memory", icon: Sparkles },
-  { href: "/parent/personality", label: "Personality", icon: SlidersHorizontal },
+  { href: "/parent/personality", label: "Personality", icon: SlidersHorizontal, ownerOnly: true },
   { href: "/parent/history", label: "Call History", icon: Clock },
   { href: "/parent/settings", label: "Settings", icon: Settings },
 ];
 
-export function DashboardShell({ children, parentName, familyName, pendingMemories, callingEnabled }: {
+export function DashboardShell({ children, isOwner, parentName, familyName, pendingMemories, callingEnabled }: {
   children: ReactNode;
+  isOwner: boolean;
   parentName: string;
   familyName: string;
   pendingMemories: number;
   callingEnabled: boolean;
 }) {
   const pathname = usePathname();
+  const NAV = ALL_NAV.filter((n) => isOwner || !n.ownerOnly);
   const router = useRouter();
   const isActive = (href: string, exact?: boolean) => (exact ? pathname === href : pathname === href || pathname.startsWith(href + "/"));
 
@@ -70,7 +72,10 @@ export function DashboardShell({ children, parentName, familyName, pendingMemori
               {callingEnabled ? "Santa's line is open" : "Calling is turned off"}
             </div>
             <div className="flex items-center justify-between px-2">
-              <p className="truncate text-xs text-mist">{parentName}</p>
+              <p className="truncate text-xs text-mist">
+                {parentName}
+                <span className="text-mist/60"> · {isOwner ? "Owner" : "Parent"}</span>
+              </p>
               <button onClick={logout} className="flex items-center gap-1.5 text-xs text-mist transition hover:text-snow">
                 <LogOut className="h-3.5 w-3.5" /> Sign out
               </button>
@@ -92,7 +97,7 @@ export function DashboardShell({ children, parentName, familyName, pendingMemori
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-6 sm:px-6 lg:px-10 lg:pb-12 lg:pt-10">{children}</main>
 
         {/* Mobile bottom nav */}
-        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-line bg-ink/90 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 backdrop-blur lg:hidden">
+        <nav style={{ gridTemplateColumns: `repeat(${NAV.length}, minmax(0, 1fr))` }} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-line bg-ink/90 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 backdrop-blur lg:hidden">
           {NAV.map(({ href, label, icon: Icon, exact }) => (
             <Link key={href} href={href} className={`relative flex flex-col items-center gap-0.5 py-1 text-[10px] ${isActive(href, exact) ? "text-gold" : "text-mist"}`}>
               <Icon className="h-5 w-5" strokeWidth={1.7} />

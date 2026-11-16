@@ -10,7 +10,7 @@ export const DELETE = handle(async (req: NextRequest, ctx: { params: Promise<{ i
   const parent = await requireParent();
   const { id } = await ctx.params;
   const { count } = await db.familyDevice.updateMany({
-    where: { id, familyId: parent.familyId, revokedAt: null },
+    where: { id, familyId: parent.familyId, revokedAt: null, ...(parent.isOwner ? {} : { parentUserId: parent.userId }) },
     data: { revokedAt: new Date() },
   });
   if (!count) throw notFound("That device isn't connected.");

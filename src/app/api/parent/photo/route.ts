@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { requireParent } from "@/lib/auth/session";
+import { requireOwner } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { assertSameOrigin, badRequest, handle, json } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
@@ -11,7 +11,7 @@ const MAX_BYTES = 2 * 1024 * 1024;
 
 export const POST = handle(async (req: NextRequest) => {
   assertSameOrigin(req);
-  const parent = await requireParent();
+  const parent = await requireOwner();
   await rateLimit(`photo:${parent.familyId}`, 30, 3600);
   const form = await req.formData().catch(() => null);
   const file = form?.get("photo");
@@ -29,7 +29,7 @@ export const POST = handle(async (req: NextRequest) => {
 
 export const DELETE = handle(async (req: NextRequest) => {
   assertSameOrigin(req);
-  const parent = await requireParent();
+  const parent = await requireOwner();
   await db.family.update({
     where: { id: parent.familyId },
     data: { santaPhoto: null, santaPhotoType: null, santaPhotoUpdatedAt: new Date() },
