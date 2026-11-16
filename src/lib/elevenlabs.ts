@@ -115,7 +115,14 @@ export async function upsertAgent(existingAgentId: string | null, opts: { voiceI
   const res = await el(`/v1/convai/agents/create`, { method: "POST", body: JSON.stringify(config) });
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
-      throw new HttpError(400, "voice_auth_failed", "ElevenLabs rejected the API key. Check ELEVENLABS_API_KEY in Vercel (it needs access to Agents), then redeploy.");
+      const detail = await errorDetail(res);
+      throw new HttpError(
+        400,
+        "voice_auth_failed",
+        detail
+          ? `ElevenLabs refused to create Santa's agent: ${detail}.`
+          : "ElevenLabs refused to create Santa's agent. In ElevenLabs, edit the API key and set ElevenLabs Agents to Write, then try again (no redeploy needed).",
+      );
     }
     throw new HttpError(502, "agent_create_failed", `ElevenLabs couldn't create Santa's agent${await detailSuffix(res)}`);
   }
