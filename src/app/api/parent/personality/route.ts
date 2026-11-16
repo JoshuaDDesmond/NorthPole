@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireOwner, requireParent } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { assertSameOrigin, handle, HttpError, json, parseJson } from "@/lib/http";
-import { isKnownVoice } from "@/lib/santa/voices";
+import { isKnownElevenLlm, isKnownVoice } from "@/lib/santa/voices";
 import { personalitySchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,12 @@ export const PATCH = handle(async (req: NextRequest) => {
   const parent = await requireOwner();
   const body = await parseJson(req, personalitySchema);
   if (body.voice && !isKnownVoice(body.voice)) throw new HttpError(400, "invalid_voice", "Please choose one of the listed voices.");
-  const data = { ...body, customVoiceId: body.customVoiceId === undefined ? undefined : body.customVoiceId?.trim() || null };
+  if (body.elevenLlm && !isKnownElevenLlm(body.elevenLlm)) throw new HttpError(400, "invalid_llm", "Please choose one of the listed conversation models.");
+  const data = {
+    ...body,
+    customVoiceId: body.customVoiceId === undefined ? undefined : body.customVoiceId?.trim() || null,
+    elevenVoiceId: body.elevenVoiceId === undefined ? undefined : body.elevenVoiceId?.trim() || null,
+  };
   const personality = await db.santaPersonality.upsert({
     where: { familyId: parent.familyId },
     create: { familyId: parent.familyId, ...data },

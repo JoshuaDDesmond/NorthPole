@@ -23,6 +23,26 @@ export const env = {
   get summaryModel() {
     return process.env.OPENAI_SUMMARY_MODEL?.trim() || "gpt-6-luna";
   },
+  get elevenLabsApiKey() {
+    return process.env.ELEVENLABS_API_KEY?.trim().replace(/^["']|["']$/g, "").trim() || null;
+  },
+  /** Override only for testing against a mock server. */
+  get elevenLabsBaseUrl() {
+    return (process.env.ELEVENLABS_BASE_URL?.trim() || "https://api.elevenlabs.io").replace(/\/$/, "");
+  },
+  /** Optional: use an agent you created yourself instead of the one the app creates. */
+  get elevenLabsAgentId() {
+    return process.env.ELEVENLABS_AGENT_ID?.trim() || null;
+  },
+  /** Optional default voice when none is chosen in Personality. */
+  get elevenLabsVoiceId() {
+    return process.env.ELEVENLABS_VOICE_ID?.trim() || null;
+  },
+  /** ElevenLabs is used whenever its key is configured, unless VOICE_PROVIDER=openai. */
+  get voiceProvider(): "elevenlabs" | "openai" {
+    if (process.env.VOICE_PROVIDER?.trim() === "openai") return "openai";
+    return this.elevenLabsApiKey ? "elevenlabs" : "openai";
+  },
   get setupToken() {
     return process.env.SETUP_TOKEN?.trim() || null;
   },

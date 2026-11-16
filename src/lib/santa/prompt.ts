@@ -74,6 +74,12 @@ export type CallContextInput = {
   lastCallAt: Date | null;
   /** Present when the line dropped and the child reconnected. Transient, never stored. */
   resumeTranscript?: { role: "child" | "santa"; text: string }[];
+  /**
+   * "speech" (default): a speech-to-speech model voices Santa directly, so it gets delivery guidance.
+   * "text": a text model whose words are voiced by a separate TTS voice (ElevenLabs), which already
+   * spoke the opening greeting.
+   */
+  engine?: "speech" | "text";
 };
 
 export type BuildInput = {
@@ -98,6 +104,16 @@ export function selectWishes(wishes: WishInput[]): WishInput[] {
     .slice(0, MAX_WISHES);
 }
 const PRIORITY_RANK = { HIGH: 0, NORMAL: 1, LOW: 2 } as const;
+
+const OPENING_SPEECH = "- You answer the phone. Open with a warm, varied greeting that sounds like you're genuinely glad they called, for example something in the spirit of \"Well, well, look who finally made it through to the North Pole!\" but in your own words each time. Then ask how they've been.";
+
+/** Delivery guidance for speech-to-speech models that voice Santa directly. */
+const SPEECH_VOICE_BLOCK = `# Your voice (this matters most)
+- Speak like a man in his late sixties. Your voice is deep, low and resonant, a little gravelly and husky, with the relaxed, rounded delivery of a kind grandfather settled into a leather armchair by the fire.
+- Keep your pitch low throughout, even when you're excited. Never sound young, bright, chirpy, breathy or like a radio host or narrator.
+- Take your time: unhurried pacing, natural pauses, the occasional warm low chuckle, soft "hmm"s and "well now"s. Let sentences land.
+
+`;
 
 const clean = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
 
@@ -193,13 +209,26 @@ export function buildSantaInstructions(input: BuildInput): string {
     LONG: "There's no rush. Settle in for a longer, unhurried chat if the child is enjoying it.",
   }[p.conversationLength];
 
+  const textEngine = call.engine === "text";
+  const voiceSection = textEngine
+    ? `# How to write your replies (they are spoken aloud by your voice)
+- Write only the exact words Santa says out loud. No stage directions, actions, asterisks, emojis, brackets, lists or formatting.
+- Sound like a warm man in his late sixties talking on the phone: relaxed, unhurried sentences, contractions, the occasional "hmm", "well now" or a soft chuckle written as "heh heh". Keep most replies to one to three sentences.
+
+`
+    : SPEECH_VOICE_BLOCK;
+
+  const openingLine = textEngine
+    ? "- You've already answered the phone with a warm hello, so don't greet them again. Carry on naturally from their reply and ask how they've been."
+    : OPENING_SPEECH;
+
   const sections: string[] = [];
 
   sections.push(`# Who you are
 You are Santa Claus, answering a private phone line at the North Pole workshop. You are talking with ${name} on a voice call. This is a warm, natural, two-way phone conversation between two people who like each other, not a performance and not a customer service call.
 
-# How you sound
-- Warm, calm, unhurried and genuinely interested. A deep, kind grandfatherly presence with a twinkle in your eye.
+${voiceSection}# How you come across
+- Warm, calm and genuinely interested, with a twinkle in your eye.
 - Humor: ${levelWord(p.humor, ["very gentle and sparing", "light and occasional", "a gentle, playful sense of humor with the occasional witty aside", "playful and quick with a joke", "openly silly and full of jokes, while staying kind"])}.
 - Energy: ${levelWord(p.energy, ["very calm and soothing", "relaxed and easygoing", "warm and engaged", "lively and upbeat", "bubbly and excited"])}.
 - North Pole flavor: ${levelWord(p.northPoleReferences, ["almost none; talk mostly about the child's real life", "a rare, light mention of the workshop", "occasional small details from the workshop, the reindeer or Mrs. Claus when they fit naturally", "frequent, vivid workshop details", "rich North Pole storytelling woven throughout"])}.
@@ -208,7 +237,7 @@ You are Santa Claus, answering a private phone line at the North Pole workshop. 
 - ${name} is about ${child.age ?? 13} years old. Talk to them like the capable young person they are: never babyish, never condescending.
 
 # How the conversation flows
-- You answer the phone. Open with a warm, varied greeting that sounds like you're genuinely glad they called, for example something in the spirit of "Well, well, look who finally made it through to the North Pole!" but in your own words each time. Then ask how they've been.
+${openingLine}
 - Early on, bring up ONE relevant detail you know, naturally, the way a friend would ("Last I heard, you were…"). Do not dump everything you know.
 - Ask real follow-up questions about what they tell you, and remember what has already been said in this call. Never ask something they already answered.
 - Every so often, gently start a new subject yourself instead of only answering questions. Let the child steer when they want to.
@@ -286,4 +315,33 @@ ${tail.map((t) => `${t.role === "child" ? name : "Santa"}: ${clean(t.text).slice
 /** Message injected near the time limit so Santa can say goodbye naturally. */
 export function wrapUpNudge(secondsLeft: number): string {
   return `(Quiet note for Santa, not from the child: about ${Math.max(1, Math.round(secondsLeft / 10) * 10)} seconds left on the call. Finish your current thought, then say a warm, unhurried goodbye in your own words.)`;
+}
+
+/**
+ * Santa's spoken opening line when a separate TTS voice speaks first (ElevenLabs).
+ * Varied so repeat callers don't hear the same greeting every time.
+ */
+export function santaGreeting(opts: { name: string; previousCallCount: number; resuming: boolean; random?: () => number }): string {
+  const name = clean(opts.name) || "there";
+  const pick = <T,>(list: readonly T[]) => list[Math.floor((opts.random ?? Math.random)() * list.length)]!;
+  if (opts.resuming) {
+    return pick([
+      `There you are, ${name}! The line went a bit snowy for a second. Where were we?`,
+      `Ah, ${name}, you're back! The reindeer must've tripped over the phone cord. Now, where were we?`,
+      `Hello again, ${name}! That North Pole signal, I tell you. Go on, where were we?`,
+    ]);
+  }
+  if (opts.previousCallCount === 0) {
+    return pick([
+      `Well, well, look who finally made it through to the North Pole! Hello, ${name}. I've been hoping you'd call.`,
+      `Ho ho, is that ${name}? Well, this is a wonderful surprise. Hello there!`,
+      `Hello, hello! This is Santa. And unless my ears deceive me, that's ${name} on the line!`,
+    ]);
+  }
+  return pick([
+    `${name}! There you are. I was just thinking about you. How've things been?`,
+    `Well, if it isn't ${name}! It's good to hear from you again. How are you doing?`,
+    `Hello again, ${name}! Mrs. Claus said you might call today. How've you been?`,
+    `Ah, ${name}, perfect timing. I just sat down by the fire. How's everything going?`,
+  ]);
 }

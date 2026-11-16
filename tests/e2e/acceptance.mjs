@@ -447,7 +447,7 @@ await check("call start relays to the Realtime API with this child's approved co
   assert(r.status === 200, `status ${r.status} ${r.text}`);
   apiCall = r.json;
   const s = mock.sessions.at(-1).session;
-  assert(s.type === "realtime" && s.model && s.audio.output.voice === "cedar", "session shape");
+  assert(s.type === "realtime" && s.model && s.audio.output.voice === "ash" && s.audio.output.speed === 0.9, "session shape");
   assert(s.audio.input.turn_detection.interrupt_response === true, "barge-in must be enabled");
   const ins = s.instructions;
   for (const must of ["Ace", "A beagle named Pepper", "Made the travel team", "Season ended 9-2", "Best friend: Riley", "nervous about a big math test"]) assert(ins.includes(must), `missing "${must}"`);

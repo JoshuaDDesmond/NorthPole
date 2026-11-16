@@ -9,6 +9,7 @@ import { allowedCallSeconds } from "@/lib/time";
 import { assembleCallContext } from "@/lib/santa/context";
 import { createRealtimeCall, safetyIdentifier } from "@/lib/openai/realtime";
 import { env } from "@/lib/env";
+import { getConversationToken } from "@/lib/elevenlabs";
 
 export const dynamic = "force-dynamic";
 
@@ -75,11 +76,19 @@ export const POST = handle(async (req: NextRequest) => {
     );
   }
 
+  const provider = env.voiceProvider;
+  if (provider === "openai" && !body.sdp) throw new HttpError(400, "bad_request", "Missing call setup.");
+  const agentId = provider === "elevenlabs" ? (family.elevenAgentId ?? env.elevenLabsAgentId) : null;
+  if (provider === "elevenlabs" && !agentId) {
+    throw new HttpError(503, "voice_not_configured", "Santa's phone line hasn't been connected yet. A parent needs to finish the voice setup in Settings.");
+  }
+
   const ctx = await assembleCallContext({
     familyId: family.id,
     childId: child.id,
     maxMinutes: Math.max(1, Math.round(allowed / 60)),
     resumeTranscript: resumedFromId ? body.resumeTranscript : undefined,
+    engine: provider === "elevenlabs" ? "text" : "speech",
   });
   if (!ctx) throw notFound();
 
@@ -89,18 +98,46 @@ export const POST = handle(async (req: NextRequest) => {
       deviceId: device.deviceId,
       resumedFromId,
       maxSeconds: allowed,
-      voice: typeof ctx.voice === "string" ? ctx.voice : "custom",
+      voice: provider === "elevenlabs" ? (ctx.eleven.voiceId ?? "agent-default") : typeof ctx.voice === "string" ? ctx.voice : "custom",
     },
   });
 
+  if (provider === "elevenlabs") {
+    try {
+      const { token, conversationId } = await getConversationToken(agentId!, ctx.child.nickname || ctx.child.firstName);
+      await db.call.update({ where: { id: call.id }, data: { openaiCallId: conversationId, model: `elevenlabs:${ctx.eleven.llm}` } });
+      // ElevenLabs applies per-call settings sent from the browser, so the briefing goes to the
+      // device for this one call. It contains only what Santa may know about this child.
+      return json({
+        provider,
+        callId: call.id,
+        conversationToken: token,
+        overrides: {
+          agent: { prompt: { prompt: ctx.instructions, llm: ctx.eleven.llm }, firstMessage: ctx.eleven.firstMessage },
+          tts: { ...(ctx.eleven.voiceId ? { voiceId: ctx.eleven.voiceId } : {}), speed: ctx.eleven.speed },
+        },
+        maxSeconds: allowed,
+        collectTranscript: family.generateMemoryProposals,
+        ambientSound: family.ambientSound,
+      });
+    } catch (err) {
+      await db.call.update({
+        where: { id: call.id },
+        data: { status: "FAILED", endReason: err instanceof HttpError ? err.code : "voice_error", endedAt: new Date() },
+      });
+      throw err;
+    }
+  }
+
   try {
     const { answerSdp, callId } = await createRealtimeCall(
-      body.sdp,
-      { instructions: ctx.instructions, voice: ctx.voice, transcribeChild: family.generateMemoryProposals },
+      body.sdp!,
+      { instructions: ctx.instructions, voice: ctx.voice, speed: ctx.speed, transcribeChild: family.generateMemoryProposals },
       safetyIdentifier(family.id, child.id),
     );
     await db.call.update({ where: { id: call.id }, data: { openaiCallId: callId, model: env.realtimeModel } });
     return json({
+      provider,
       callId: call.id,
       answerSdp,
       maxSeconds: allowed,

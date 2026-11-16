@@ -45,7 +45,9 @@ export async function finishCall(
       durationSec: duration,
     },
   });
-  if (opts.hangup !== false) await hangupRealtimeCall(call.openaiCallId);
+  // OpenAI calls can be hung up server-side. ElevenLabs calls are ended by the browser (told via
+  // the heartbeat) and capped by the agent's own maximum duration.
+  if (opts.hangup !== false && !call.model?.startsWith("elevenlabs")) await hangupRealtimeCall(call.openaiCallId);
   return updated;
 }
 

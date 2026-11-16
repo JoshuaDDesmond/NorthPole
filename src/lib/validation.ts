@@ -116,6 +116,9 @@ export const personalitySchema = z.object({
   energy: z.number().int().min(1).max(5).optional(),
   northPoleReferences: z.number().int().min(1).max(5).optional(),
   conversationLength: z.enum(["SHORT", "MEDIUM", "LONG"]).optional(),
+  speakingPace: z.number().min(0.7).max(1.2).optional(),
+  elevenVoiceId: z.string().trim().max(64).regex(/^[A-Za-z0-9]*$/, "That doesn't look like an ElevenLabs voice ID.").nullable().optional(),
+  elevenLlm: z.string().trim().max(64).optional(),
   topicsToAvoid: optText(1500),
   nextCallInstructions: optText(1500),
 });
@@ -141,7 +144,8 @@ export const transcriptSchema = z.array(transcriptTurn).max(400);
 
 export const callStartSchema = z.object({
   childId: z.string().min(1).max(64),
-  sdp: z.string().min(10).max(40_000),
+  /** Required for the OpenAI engine (WebRTC offer); omitted for ElevenLabs. */
+  sdp: z.string().min(10).max(40_000).optional(),
   resumeOfCallId: z.string().max(64).optional(),
   resumeTranscript: transcriptSchema.optional(),
 });

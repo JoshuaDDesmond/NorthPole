@@ -13,12 +13,15 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'" + (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
+      // blob:/data: let the ElevenLabs SDK load its audio worklets.
+      "script-src 'self' 'unsafe-inline' blob: data:" + (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
+      "worker-src 'self' blob:",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
-      "media-src 'self' blob: mediastream:",
+      // https: lets parents play ElevenLabs voice previews in Personality.
+      "media-src 'self' blob: mediastream: https:",
       "font-src 'self' data:",
-      "connect-src 'self'",
+      "connect-src 'self' https://api.elevenlabs.io wss://api.elevenlabs.io https://*.elevenlabs.io wss://*.elevenlabs.io",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

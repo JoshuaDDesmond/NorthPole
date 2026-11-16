@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Ambience } from "@/lib/client/ambience";
 import { VoiceSessionManager, type CallPhase, type EndInfo, type TranscriptTurn } from "@/lib/client/voice-session";
+import { ElevenLabsSession } from "@/lib/client/elevenlabs-session";
 import { AudioWaveform } from "./AudioWaveform";
 import { CallButton, CallControls } from "./CallControls";
 import { CallEndedScreen } from "./CallEndedScreen";
@@ -19,12 +20,13 @@ type Props = {
   photoUrl: string;
   ambientSound: boolean;
   canSwitchCaller: boolean;
+  provider: "openai" | "elevenlabs";
 };
 
 type View = "idle" | "calling" | "connected" | "ended" | "error";
 type WakeLockHandle = { release: () => Promise<void> };
 
-export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwitchCaller }: Props) {
+export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwitchCaller, provider }: Props) {
   const [view, setView] = useState<View>("idle");
   const [phase, setPhase] = useState<CallPhase>("idle");
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
@@ -39,7 +41,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
   const [remaining, setRemaining] = useState<number | null>(null);
   const [showInfo, setShowInfo] = useState(false);
 
-  const managerRef = useRef<VoiceSessionManager | null>(null);
+  const managerRef = useRef<VoiceSessionManager | ElevenLabsSession | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const ambienceRef = useRef<Ambience | null>(null);
   const wakeLockRef = useRef<WakeLockHandle | null>(null);
@@ -71,7 +73,8 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
       }
       void audioCtxRef.current.resume().catch(() => {});
 
-      const manager = new VoiceSessionManager(childId, {
+      const Engine = provider === "elevenlabs" ? ElevenLabsSession : VoiceSessionManager;
+      const manager = new Engine(childId, {
         onPhase: setPhase,
         onError: (code, message) => {
           releaseExtras();
@@ -114,7 +117,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
         /* surfaced through onError */
       }
     },
-    [childId, ambientSound, releaseExtras, speakerOn, selectedOutput],
+    [childId, ambientSound, releaseExtras, speakerOn, selectedOutput, provider],
   );
 
   useEffect(() => {

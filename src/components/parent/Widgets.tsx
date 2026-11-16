@@ -115,3 +115,30 @@ export function HangUpButton({ callId }: { callId: string }) {
     </Button>
   );
 }
+
+/** Owner-only: creates or refreshes Santa's ElevenLabs agent. */
+export function ConnectElevenLabsButton({ connected }: { connected: boolean }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      variant={connected ? "secondary" : "gold"}
+      loading={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await api("/api/parent/elevenlabs/connect", { method: "POST" });
+          toast(connected ? "Santa's agent settings were refreshed." : "Connected! Santa's ElevenLabs agent is ready.");
+          router.refresh();
+        } catch (e) {
+          toast((e as Error).message, "error");
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {connected ? "Refresh ElevenLabs settings" : "Connect ElevenLabs"}
+    </Button>
+  );
+}

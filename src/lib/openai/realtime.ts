@@ -8,6 +8,8 @@ export type RealtimeSessionConfig = {
   instructions: string;
   voice: string | { id: string };
   transcribeChild: boolean;
+  /** Speaking speed (0.25 to 1.5, 1 = normal). Slightly slower reads as older and calmer. */
+  speed?: number;
 };
 
 /** Stable, non-reversible identifier so OpenAI can apply per-end-user safety controls. */
@@ -32,7 +34,7 @@ export function buildSessionPayload(cfg: RealtimeSessionConfig) {
           interrupt_response: true,
         },
       },
-      output: { voice: cfg.voice },
+      output: { voice: cfg.voice, speed: Math.min(1.2, Math.max(0.7, cfg.speed ?? 0.9)) },
     },
   };
 }

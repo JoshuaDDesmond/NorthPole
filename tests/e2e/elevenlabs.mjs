@@ -1,0 +1,252 @@
+/**
+ * End-to-end checks for the ElevenLabs voice engine.
+ *
+ * Runs the production build with ELEVENLABS_API_KEY set and the server pointed
+ * at a local mock of the ElevenLabs API, then verifies agent setup, call
+ * tokens, Santa's per-call briefing and access control. The live audio
+ * connection itself needs real ElevenLabs servers, so the browser check here
+ * verifies that a failed connection is reported honestly.
+ *
+ * Usage:  npm run build && npm run test:e2e:elevenlabs
+ */
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { chromium } = require("playwright");
+const pg = require("pg");
+
+const ROOT = new URL("../../", import.meta.url).pathname;
+const PORT = 3110;
+const MOCK_PORT = 4020;
+const BASE = `http://localhost:${PORT}`;
+const TEST_DB = process.env.TEST_DATABASE_URL ?? "postgresql://northpole:northpole@localhost:5432/northpole_test?schema=public";
+const EL_KEY = "sk_test_elevenlabs_key_never_in_browser";
+const DEFAULT_VOICE = "VoiceDefault123";
+
+let passed = 0;
+const failures = [];
+async function check(name, fn) {
+  try {
+    await fn();
+    passed++;
+    console.log(`  ✓ ${name}`);
+  } catch (e) {
+    failures.push(name);
+    console.log(`  ✗ ${name}\n      ${e?.message ?? e}`);
+  }
+}
+const assert = (c, m) => {
+  if (!c) throw new Error(m);
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const db = new pg.Client({ connectionString: TEST_DB });
+await db.connect();
+await db.query(`TRUNCATE "Family","RateLimitBucket" CASCADE`);
+
+/* ------------------------------ Mock ElevenLabs ------------------------------ */
+const mock = { agents: new Map(), tokens: [], requests: [] };
+const mockServer = createServer(async (req, res) => {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString() || "{}") : null;
+  mock.requests.push({ method: req.method, url: req.url, body });
+  const send = (status, data) => res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(data));
+  if (req.headers["xi-api-key"] !== EL_KEY) return send(401, { detail: "invalid api key" });
+  const url = new URL(req.url, "http://mock");
+  if (req.method === "POST" && url.pathname === "/v1/convai/agents/create") {
+    const id = `agent_test_${mock.agents.size + 1}`;
+    mock.agents.set(id, body);
+    return send(200, { agent_id: id });
+  }
+  const agentMatch = url.pathname.match(/^\/v1\/convai\/agents\/([^/]+)$/);
+  if (agentMatch) {
+    if (!mock.agents.has(agentMatch[1])) return send(404, { detail: "not found" });
+    if (req.method === "PATCH") mock.agents.set(agentMatch[1], body);
+    return send(200, { agent_id: agentMatch[1] });
+  }
+  if (req.method === "GET" && url.pathname === "/v1/convai/conversation/token") {
+    const agent = url.searchParams.get("agent_id");
+    if (!mock.agents.has(agent)) return send(404, { detail: "agent not found" });
+    mock.tokens.push({ agent, participant: url.searchParams.get("participant_name") });
+    return send(200, { token: `tok_${mock.tokens.length}`, conversation_id: `conv_${mock.tokens.length}` });
+  }
+  if (req.method === "GET" && url.pathname === "/v2/voices") {
+    return send(200, {
+      voices: [
+        { voice_id: DEFAULT_VOICE, name: "Old Saint Nick", description: "Warm and deep", preview_url: null, category: "professional", labels: { age: "old", gender: "male" } },
+        { voice_id: "VoiceOther456", name: "Young Narrator", description: "", preview_url: null, category: "premade", labels: {} },
+      ],
+      has_more: false,
+    });
+  }
+  send(404, { detail: "unknown" });
+});
+await new Promise((r) => mockServer.listen(MOCK_PORT, r));
+
+/* ------------------------------ Next server ------------------------------ */
+try {
+  await fetch(`${BASE}/robots.txt`);
+  console.error(`Port ${PORT} is already in use. Stop it and rerun.`);
+  process.exit(1);
+} catch {}
+const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
+  cwd: ROOT,
+  env: {
+    ...process.env,
+    NODE_ENV: "production",
+    DATABASE_URL: TEST_DB,
+    ELEVENLABS_API_KEY: EL_KEY,
+    ELEVENLABS_BASE_URL: `http://localhost:${MOCK_PORT}`,
+    ELEVENLABS_VOICE_ID: DEFAULT_VOICE,
+    OPENAI_API_KEY: "",
+    SETUP_TOKEN: "el-setup",
+  },
+  stdio: "ignore",
+  detached: true,
+});
+const stopServer = () => {
+  try {
+    process.kill(-server.pid, "SIGTERM");
+  } catch {}
+};
+process.on("exit", stopServer);
+for (let i = 0; i < 60; i++) {
+  try {
+    await fetch(`${BASE}/robots.txt`);
+    break;
+  } catch {
+    await sleep(500);
+  }
+}
+
+function client() {
+  const jar = new Map();
+  return async (path, { method = "GET", body } = {}) => {
+    const headers = { origin: BASE, cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; ") };
+    if (body !== undefined) headers["content-type"] = "application/json";
+    const res = await fetch(BASE + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, redirect: "manual" });
+    for (const c of res.headers.getSetCookie()) {
+      const [pair] = c.split(";");
+      const [k, ...v] = pair.split("=");
+      jar.set(k, v.join("="));
+    }
+    const text = await res.text();
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {}
+    return { status: res.status, json, text };
+  };
+}
+
+const owner = client();
+const other = client();
+const kid = client();
+let childId;
+
+console.log("\nNorth Pole Direct Line · ElevenLabs engine\n");
+
+await check("setup: owner, a child with a wish list, a second parent, a paired device", async () => {
+  await owner("/api/parent/auth/setup", { method: "POST", body: { setupToken: "el-setup", familyName: "EL", name: "Pat", email: "pat@el.test", password: "a-long-password", timezone: "America/New_York" } });
+  const c = await owner("/api/parent/children", { method: "POST", body: { firstName: "Alice", nickname: "Ace", age: 13, pets: "A beagle named Pepper", topicsToAvoid: "the move" } });
+  childId = c.json.child.id;
+  await owner(`/api/parent/children/${childId}/wishes`, { method: "POST", body: { title: "Bauer Vapor skates", details: "size 8", link: "https://example.com/skates", notes: "PRIVATE-NOTE", topWish: true } });
+  await owner("/api/parent/access-code", { method: "POST", body: { code: "elf-crew-1" } });
+  await owner("/api/parent/me", { method: "PATCH", body: { consent: true } });
+  await owner("/api/parent/parents", { method: "POST", body: { name: "Jo", email: "jo@el.test", password: "temporary-pass-1" } });
+  await other("/api/parent/auth/login", { method: "POST", body: { email: "jo@el.test", password: "temporary-pass-1" } });
+  const pair = await kid("/api/family/access", { method: "POST", body: { code: "elf-crew-1" } });
+  assert(pair.status === 200 && childId, `pair ${pair.status}`);
+});
+
+await check("before connecting, calls fail honestly and status explains the next step", async () => {
+  const status = await owner("/api/parent/voice-status");
+  assert(status.json.provider === "elevenlabs" && status.json.ok === false && /Connect ElevenLabs/.test(status.json.message), JSON.stringify(status.json));
+  const r = await kid("/api/call/start", { method: "POST", body: { childId } });
+  assert(r.status === 503 && r.json.error.code === "voice_not_configured", `start ${r.status} ${r.text}`);
+});
+
+await check("only the owner can connect ElevenLabs or browse voices", async () => {
+  const a = await other("/api/parent/elevenlabs/connect", { method: "POST" });
+  const b = await other("/api/parent/elevenlabs/voices");
+  assert(a.status === 403 && b.status === 403, `${a.status} ${b.status}`);
+});
+
+await check("Connect ElevenLabs creates a private agent with per-call overrides enabled", async () => {
+  const r = await owner("/api/parent/elevenlabs/connect", { method: "POST" });
+  assert(r.status === 200 && r.json.agentId === "agent_test_1", `connect ${r.status} ${r.text}`);
+  const cfg = mock.agents.get("agent_test_1");
+  assert(cfg.platform_settings.auth.enable_auth === true, "auth must be required");
+  const o = cfg.platform_settings.overrides.conversation_config_override;
+  assert(o.agent.prompt.prompt && o.agent.first_message && o.tts.voice_id && o.agent.prompt.llm, "overrides not enabled");
+  assert(cfg.conversation_config.tts.voice_id === DEFAULT_VOICE, "default voice not applied");
+  assert(cfg.conversation_config.conversation.client_events.includes("user_transcript"), "transcripts not enabled");
+  const again = await owner("/api/parent/elevenlabs/connect", { method: "POST" });
+  assert(again.json.agentId === "agent_test_1" && mock.agents.size === 1, "reconnect should update, not duplicate");
+  const status = await owner("/api/parent/voice-status");
+  assert(status.json.ok === true, JSON.stringify(status.json));
+});
+
+await check("voices list comes from the ElevenLabs account", async () => {
+  const r = await owner("/api/parent/elevenlabs/voices");
+  assert(r.status === 200 && r.json.voices[0].name === "Old Saint Nick" && /old/.test(r.json.voices[0].description), r.text);
+});
+
+let started;
+await check("call start returns a one-time token and this child's briefing, with no secrets or parent-only data", async () => {
+  const r = await kid("/api/call/start", { method: "POST", body: { childId } });
+  assert(r.status === 200 && r.json.provider === "elevenlabs" && r.json.conversationToken === "tok_1", `start ${r.status} ${r.text}`);
+  started = r.json;
+  const prompt = r.json.overrides.agent.prompt.prompt;
+  for (const must of ["Ace", "A beagle named Pepper", "Bauer Vapor skates (size 8)", "the move", "Write only the exact words Santa says out loud"]) assert(prompt.includes(must), `missing "${must}"`);
+  assert(r.json.overrides.agent.firstMessage.includes("Ace"), "greeting should use the child's name");
+  assert(r.json.overrides.tts.voiceId === DEFAULT_VOICE, "voice override");
+  const blob = JSON.stringify(r.json);
+  for (const mustNot of [EL_KEY, "example.com/skates", "PRIVATE-NOTE", "purchased", "# Your voice"]) assert(!blob.includes(mustNot), `leaked "${mustNot}"`);
+  const row = (await db.query(`SELECT model, "openaiCallId" FROM "Call" WHERE id=$1`, [r.json.callId])).rows[0];
+  assert(row.model.startsWith("elevenlabs:") && row.openaiCallId === "conv_1", JSON.stringify(row));
+});
+
+await check("connected, heartbeat and end work without trying to hang up via OpenAI", async () => {
+  await kid(`/api/call/${started.callId}/connected`, { method: "POST" });
+  const hb = await kid(`/api/call/${started.callId}/heartbeat`, { method: "POST" });
+  assert(hb.json.stop === false, hb.text);
+  const end = await kid(`/api/call/${started.callId}/end`, { method: "POST", body: { reason: "user_hangup", durationSec: 5 } });
+  assert(end.status === 200, end.text);
+});
+
+await check("the parent's voice and model choices are used on the next call", async () => {
+  await owner("/api/parent/personality", { method: "PATCH", body: { elevenVoiceId: "VoiceOther456", elevenLlm: "claude-sonnet-4-5" } });
+  const r = await kid("/api/call/start", { method: "POST", body: { childId } });
+  assert(r.json.overrides.tts.voiceId === "VoiceOther456" && r.json.overrides.agent.prompt.llm === "claude-sonnet-4-5", JSON.stringify(r.json.overrides.tts));
+  await kid(`/api/call/${r.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+  const bad = await owner("/api/parent/personality", { method: "PATCH", body: { elevenLlm: "made-up-model" } });
+  assert(bad.status === 400, `bad model ${bad.status}`);
+});
+
+await check("in the browser, a failed ElevenLabs connection shows an honest error", async () => {
+  const browser = await chromium.launch({ args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
+  const ctx = await browser.newContext({ permissions: ["microphone"] });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE + "/");
+  await page.getByPlaceholder("North Pole code").fill("elf-crew-1");
+  await page.getByRole("button", { name: "Connect" }).click();
+  await page.getByRole("button", { name: "Call Santa" }).waitFor({ timeout: 15000 });
+  await page.getByRole("button", { name: "Call Santa" }).click();
+  // The mock token can't open a real ElevenLabs session, so this must fail visibly, never fake "Connected".
+  await page.getByText(/couldn't connect to the North Pole|taking too long to answer/i).waitFor({ timeout: 40000 });
+  assert(!(await page.getByText("Connected to North Pole Workshop").isVisible()), "showed connected");
+  await browser.close();
+  assert(errors.length === 0, errors.join(" | "));
+});
+
+stopServer();
+mockServer.close();
+await db.end();
+console.log(`\n${passed} passed, ${failures.length} failed`);
+process.exit(failures.length ? 1 : 0);

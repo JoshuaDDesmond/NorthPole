@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { CallScreen } from "@/components/call/CallScreen";
 import { getFamilyDevice } from "@/lib/auth/session";
 import { getFamilyView } from "@/lib/family-view";
+import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export default async function CallPage({ params }: { params: Promise<{ childId: 
   return (
     <CallScreen
       key={caller.id}
+      provider={env.voiceProvider}
       childId={caller.id}
       childName={caller.name}
       photoUrl={view.photoUrl}

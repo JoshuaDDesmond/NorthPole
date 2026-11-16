@@ -72,6 +72,7 @@ model Family {
   dailyMinutesPerChild    Int     @default(20)
   generateMemoryProposals Boolean @default(true)
   ambientSound            Boolean @default(false)
+  elevenAgentId           String? // ElevenLabs agent created by the app
 
   // Contact photo (stored in the database so it works on serverless hosts)
   santaPhoto          Bytes?
@@ -88,12 +89,15 @@ model SantaPersonality {
   id                   String             @id @default(cuid())
   familyId             String             @unique
   family               Family             @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  voice                String             @default("cedar")
+  voice                String             @default("ash")
   customVoiceId        String?
   humor                Int                @default(3) // 1-5
   energy               Int                @default(3) // 1-5
   northPoleReferences  Int                @default(3) // 1-5
   conversationLength   ConversationLength @default(MEDIUM)
+  speakingPace         Float              @default(0.9) // realtime audio.output.speed; slower reads older
+  elevenVoiceId        String? // ElevenLabs voice; falls back to ELEVENLABS_VOICE_ID
+  elevenLlm            String             @default("gemini-2.5-flash")
   topicsToAvoid        String             @default("")
   nextCallInstructions String             @default("")
   updatedAt            DateTime           @updatedAt

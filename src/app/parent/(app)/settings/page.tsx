@@ -1,4 +1,5 @@
-import { CallingSwitch, VoiceStatusCard } from "@/components/parent/Widgets";
+import { CallingSwitch, ConnectElevenLabsButton, VoiceStatusCard } from "@/components/parent/Widgets";
+import { env } from "@/lib/env";
 import {
   CallingPreferencesPanel,
   ConsentPanel,
@@ -30,6 +31,7 @@ export default async function SettingsPage() {
         ambientSound: true,
         santaPhotoType: true,
         santaPhotoUpdatedAt: true,
+        elevenAgentId: true,
       },
     }),
     db.parentUser.findUniqueOrThrow({ where: { id: parent.userId }, select: { accessCodeHash: true, consentAt: true } }),
@@ -92,12 +94,34 @@ export default async function SettingsPage() {
             }}
           />
           <Card>
-            <CardHeader title="Voice service" description="Santa's voice runs on the OpenAI Realtime API. Keys stay on the server and never reach a browser." />
+            <CardHeader
+              title="Voice service"
+              description={
+                env.voiceProvider === "elevenlabs"
+                  ? "Santa's voice and conversation run on ElevenLabs. Keys stay on the server and never reach a browser."
+                  : "Santa's voice runs on the OpenAI Realtime API. Keys stay on the server and never reach a browser."
+              }
+            />
             <div className="space-y-4 p-5 sm:p-6">
               <VoiceStatusCard />
+              {env.voiceProvider === "elevenlabs" && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <ConnectElevenLabsButton connected={Boolean(family.elevenAgentId ?? env.elevenLabsAgentId)} />
+                  <p className="text-xs text-mist">Creates Santa&apos;s agent in your ElevenLabs account with the right settings. Safe to press again anytime.</p>
+                </div>
+              )}
               <p className="text-xs leading-relaxed text-mist">
-                To connect or change the key, set <code className="rounded bg-white/10 px-1 py-0.5 text-snow">OPENAI_API_KEY</code> in your hosting provider&apos;s environment variables
-                and redeploy. See the README for details.
+                {env.voiceProvider === "elevenlabs" ? (
+                  <>
+                    Keys live in Vercel: <code className="rounded bg-white/10 px-1 py-0.5 text-snow">ELEVENLABS_API_KEY</code> for the voice, and{" "}
+                    <code className="rounded bg-white/10 px-1 py-0.5 text-snow">OPENAI_API_KEY</code> for post-call summaries (optional). Redeploy after changing a key.
+                  </>
+                ) : (
+                  <>
+                    To connect or change the key, set <code className="rounded bg-white/10 px-1 py-0.5 text-snow">OPENAI_API_KEY</code> in your hosting provider&apos;s environment
+                    variables and redeploy. Add <code className="rounded bg-white/10 px-1 py-0.5 text-snow">ELEVENLABS_API_KEY</code> to switch Santa to ElevenLabs.
+                  </>
+                )}
               </p>
             </div>
           </Card>

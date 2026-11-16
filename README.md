@@ -17,7 +17,9 @@ No phone number or telephony service. Everything runs through the browser's micr
    | Variable | Required | Notes |
    |---|---|---|
    | `DATABASE_URL` | Yes | Postgres connection string |
-   | `OPENAI_API_KEY` | Yes | Server-side only |
+   | `ELEVENLABS_API_KEY` | Recommended | Santa's voice and conversation via ElevenLabs. Then press Connect ElevenLabs in Settings |
+| `ELEVENLABS_VOICE_ID` | Optional | Default ElevenLabs voice for Santa |
+| `OPENAI_API_KEY` | Yes, unless using ElevenLabs | Voice fallback, plus post-call summaries and wish capture |
    | `SETUP_TOKEN` | Yes, first run | Any long random string. You type it once to create the first parent account |
    | `CRON_SECRET` | Recommended | Protects the nightly cleanup job |
    | `OPENAI_REALTIME_MODEL` etc. | No | Only if your account can't use the defaults |
@@ -93,7 +95,12 @@ Open any child → **Preview** to see the exact briefing Santa will receive.
 **Policy note.** OpenAI's terms set 13 as the minimum age and call for parental permission for minors (confirm the current wording before launch), and its developer guidance for developers serving minors calls for age-appropriate safeguards, AI disclosure and parental control, all of which this app implements. The app assumes every child you add is 13 or older. If you ever add a child under 13, OpenAI's guidance requires Zero Data Retention on your OpenAI organization first, so check that before enabling them.
 
 ### About the voice
-Santa uses OpenAI's built-in **Cedar** voice by default (the deepest and warmest), selectable under Personality. If OpenAI has granted your organization a custom voice, paste its ID there. An ElevenLabs voice isn't plugged in, because it would mean replacing OpenAI's native speech-to-speech pipeline with a separate text-to-speech hop, which adds noticeable latency and weakens interruption handling. It's a reasonable phase-two upgrade if you find a voice you love.
+Santa can run on either of two voice engines. The app picks automatically:
+
+- **ElevenLabs (used whenever `ELEVENLABS_API_KEY` is set).** ElevenLabs Agents handles listening, turn-taking, interruptions, the conversation model and Santa's voice, so you can use any voice from the ElevenLabs Voice Library, including genuinely older-sounding ones. Setup: add `ELEVENLABS_API_KEY` (and optionally `ELEVENLABS_VOICE_ID` for the default voice) in Vercel, redeploy, then press **Connect ElevenLabs** in Settings. The app creates a private agent in your account with the right settings. Pick the voice and the conversation model (Gemini, Claude or GPT, all hosted by ElevenLabs) under Personality.
+- **OpenAI Realtime (fallback).** Uses OpenAI's built-in voices (Ash sounds the oldest) with delivery instructions and a slightly slower speaking pace.
+
+With ElevenLabs, Santa's briefing for the child on the line is sent to that device when the call starts, because ElevenLabs applies per-call instructions from the browser. It contains only what Santa may know about that child; links, private notes, purchase status and other children's details are never included. `OPENAI_API_KEY` is still used, if present, for post-call summaries, suggested memories and wish capture.
 
 ---
 

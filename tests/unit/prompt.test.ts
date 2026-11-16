@@ -127,6 +127,12 @@ describe("buildSantaInstructions", () => {
     expect(text).toMatch(/Never invent memories/);
   });
 
+  it("tells Santa to sound like an older man", () => {
+    const text = buildSantaInstructions(baseInput());
+    expect(text).toMatch(/late sixties/);
+    expect(text).toMatch(/Never sound young/);
+  });
+
   it("states the call length limit", () => {
     const input = baseInput();
     input.call.maxMinutes = 7;
@@ -227,5 +233,22 @@ describe("wish list in Santa's briefing", () => {
     const text = buildSantaInstructions(baseInput());
     expect(text).toMatch(/confirm the specifics/);
     expect(text).toMatch(/Never promise any item/);
+  });
+});
+
+describe("text-engine briefing and greetings (ElevenLabs)", async () => {
+  const { santaGreeting } = await import("@/lib/santa/prompt");
+  it("asks for spoken words only and skips the re-greeting", () => {
+    const input = baseInput();
+    input.call.engine = "text";
+    const text = buildSantaInstructions(input);
+    expect(text).toMatch(/Write only the exact words Santa says out loud/);
+    expect(text).toMatch(/don't greet them again/);
+    expect(text).not.toMatch(/# Your voice/);
+  });
+  it("varies greetings for first-time, returning and reconnecting callers", () => {
+    expect(santaGreeting({ name: "Ace", previousCallCount: 0, resuming: false, random: () => 0 })).toContain("finally made it through");
+    expect(santaGreeting({ name: "Ace", previousCallCount: 3, resuming: false, random: () => 0.99 })).toContain("Ace");
+    expect(santaGreeting({ name: "Ace", previousCallCount: 3, resuming: true, random: () => 0 })).toMatch(/where were we/i);
   });
 });

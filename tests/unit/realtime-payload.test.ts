@@ -9,6 +9,12 @@ describe("realtime session payload", () => {
     expect(p.audio.output.voice).toBe("cedar");
     expect(p.audio.input.turn_detection).toMatchObject({ create_response: true, interrupt_response: true });
     expect(p.audio.input.transcription).not.toBeNull();
+    expect(p.audio.output.speed).toBe(0.9);
+  });
+
+  it("uses the parent's speaking pace within safe bounds", () => {
+    expect(buildSessionPayload({ instructions: "x", voice: "ash", transcribeChild: false, speed: 0.82 }).audio.output.speed).toBe(0.82);
+    expect(buildSessionPayload({ instructions: "x", voice: "ash", transcribeChild: false, speed: 3 }).audio.output.speed).toBe(1.2);
   });
 
   it("disables child transcription when memory suggestions are off", () => {

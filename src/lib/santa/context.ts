@@ -1,7 +1,8 @@
 import "server-only";
 import { db } from "../db";
-import { buildSantaInstructions, selectMemories, selectTalkingPoints, type BuildInput } from "./prompt";
-import { DEFAULT_VOICE, isKnownVoice } from "./voices";
+import { buildSantaInstructions, santaGreeting, selectMemories, selectTalkingPoints, type BuildInput } from "./prompt";
+import { env } from "../env";
+import { DEFAULT_ELEVEN_LLM, DEFAULT_VOICE, isKnownElevenLlm, isKnownVoice } from "./voices";
 
 /** Loads exactly one child's parent-approved data and builds Santa's instructions. */
 export async function assembleCallContext(params: {
@@ -10,6 +11,8 @@ export async function assembleCallContext(params: {
   maxMinutes: number;
   now?: Date;
   resumeTranscript?: { role: "child" | "santa"; text: string }[];
+  /** "text" when ElevenLabs voices Santa from a text model's replies. */
+  engine?: "speech" | "text";
 }) {
   const now = params.now ?? new Date();
   const child = await db.child.findFirst({
@@ -64,6 +67,7 @@ export async function assembleCallContext(params: {
       previousCallCount,
       lastCallAt: lastCall?.startedAt ?? null,
       resumeTranscript: params.resumeTranscript,
+      engine: params.engine ?? "speech",
     },
   };
 
@@ -77,6 +81,18 @@ export async function assembleCallContext(params: {
     child,
     instructions: buildSantaInstructions(input),
     voice: voiceSetting,
+    speed: personality?.speakingPace ?? 0.9,
+    eleven: {
+      voiceId: personality?.elevenVoiceId?.trim() || env.elevenLabsVoiceId,
+      llm: personality?.elevenLlm && isKnownElevenLlm(personality.elevenLlm) ? personality.elevenLlm : DEFAULT_ELEVEN_LLM,
+      // ElevenLabs speed range is narrower; keep Santa a touch unhurried.
+      speed: Math.min(1.1, Math.max(0.8, (personality?.speakingPace ?? 0.9) + 0.05)),
+      firstMessage: santaGreeting({
+        name: child.nickname || child.firstName,
+        previousCallCount,
+        resuming: Boolean(params.resumeTranscript?.length),
+      }),
+    },
     usedTalkingPoints: selectTalkingPoints(child.talkingPoints, now),
     usedMemories: selectMemories(child.memories),
   };
