@@ -7,7 +7,8 @@ import "server-only";
  */
 export const env = {
   get openaiApiKey() {
-    return process.env.OPENAI_API_KEY?.trim() || null;
+    // Tolerate a key pasted with surrounding quotes or whitespace.
+    return process.env.OPENAI_API_KEY?.trim().replace(/^["']|["']$/g, "").trim() || null;
   },
   /** Override only for testing against a mock server. */
   get openaiBaseUrl() {

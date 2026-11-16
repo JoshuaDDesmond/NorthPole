@@ -110,6 +110,8 @@ export async function checkVoiceService(): Promise<{ configured: boolean; ok: bo
   const model = env.realtimeModel;
   const key = env.openaiApiKey;
   if (!key) return { configured: false, ok: false, model, message: "OPENAI_API_KEY is not set on the server." };
+  const formatProblem = describeKeyFormat(key);
+  if (formatProblem) return { configured: true, ok: false, model, message: formatProblem };
   try {
     const res = await fetch(`${env.openaiBaseUrl}/models/${encodeURIComponent(model)}`, {
       headers: { Authorization: `Bearer ${key}` },
@@ -117,11 +119,38 @@ export async function checkVoiceService(): Promise<{ configured: boolean; ok: bo
       cache: "no-store",
     });
     if (res.ok) return { configured: true, ok: true, model, message: "Connected. The realtime voice model is available to your account." };
-    if (res.status === 401) return { configured: true, ok: false, model, message: "The API key was rejected. Check that it is correct and active." };
+    if (res.status === 401 || res.status === 403) {
+      const reason = await openAiReason(res);
+      if (/scope|permission/i.test(reason)) {
+        return { configured: true, ok: false, model, message: "The OpenAI key is restricted and missing permissions. In OpenAI, edit the key and set Permissions to All, then redeploy." };
+      }
+      return { configured: true, ok: false, model, message: `OpenAI rejected the key${reason ? ` (${reason})` : ""}. Create a new secret key at platform.openai.com, paste it into OPENAI_API_KEY in Vercel, then redeploy.` };
+    }
     if (res.status === 404) return { configured: true, ok: false, model, message: `Your account can't access the model "${model}". Set OPENAI_REALTIME_MODEL to a realtime model you have access to.` };
     return { configured: true, ok: false, model, message: `The voice service responded with status ${res.status}.` };
   } catch {
     return { configured: true, ok: false, model, message: "Couldn't reach the voice service from the server." };
+  }
+}
+
+/** Catches common mix-ups before calling OpenAI. Never echoes the key itself. */
+export function describeKeyFormat(key: string): string | null {
+  if (key.startsWith("sk-ant-")) {
+    return "This is an Anthropic (Claude) key. Santa's voice runs on OpenAI, so OPENAI_API_KEY needs an OpenAI secret key (it starts with sk-proj- or sk-) from platform.openai.com.";
+  }
+  if (/\s/.test(key)) return "The OpenAI key contains spaces or line breaks. Re-copy it exactly as shown in OpenAI.";
+  if (!key.startsWith("sk-")) return "That doesn't look like an OpenAI secret key. OpenAI keys start with sk-proj- or sk-.";
+  return null;
+}
+
+/** OpenAI's error message with anything key-like redacted, for the parent dashboard. */
+async function openAiReason(res: Response) {
+  try {
+    const body = (await res.json()) as { error?: { message?: string; code?: string } };
+    const msg = (body.error?.message ?? body.error?.code ?? "").replace(/sk-[A-Za-z0-9_\-*]+/g, "[key]");
+    return msg.slice(0, 200);
+  } catch {
+    return "";
   }
 }
 

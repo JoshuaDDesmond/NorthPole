@@ -24,3 +24,18 @@ describe("realtime session payload", () => {
     expect(a).not.toContain("child1");
   });
 });
+
+describe("OpenAI key format checks", async () => {
+  const { describeKeyFormat } = await import("@/lib/openai/realtime");
+  it("flags an Anthropic key pasted by mistake", () => {
+    expect(describeKeyFormat("sk-ant-api03-abc")).toMatch(/Anthropic \(Claude\) key/);
+  });
+  it("flags keys that aren't OpenAI secret keys", () => {
+    expect(describeKeyFormat("pk_live_123")).toMatch(/doesn't look like an OpenAI secret key/);
+    expect(describeKeyFormat("sk-proj-abc def")).toMatch(/spaces/);
+  });
+  it("accepts OpenAI secret keys and never echoes them", () => {
+    expect(describeKeyFormat("sk-proj-abc123")).toBeNull();
+    expect(describeKeyFormat("sk-ant-SECRET")).not.toContain("SECRET");
+  });
+});
