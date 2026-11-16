@@ -11,7 +11,7 @@ No phone number or telephony service. Everything runs through the browser's micr
 
 ## What you need to set up (about 15 minutes)
 
-1. **A PostgreSQL database.** Any provider works. Easiest on Vercel: *Storage → Create → Neon Postgres*, which sets `DATABASE_URL` for you.
+1. **A PostgreSQL database.** Any provider works. Easiest on Vercel: *Project → Storage → Create Database → Neon (Free)*, connected to this project. It sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED` for you, and migrations automatically use the unpooled connection.
 2. **An OpenAI API key** with access to the Realtime API (`gpt-realtime-2.1` by default). Create one at platform.openai.com → API keys. Add a few dollars of credit; a 10-minute call typically costs well under a dollar.
 3. **Environment variables** on your host (see `.env.example`):
    | Variable | Required | Notes |
