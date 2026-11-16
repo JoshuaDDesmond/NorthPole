@@ -148,8 +148,8 @@ export function ChildProfileEditor({ childId, initial }: { childId?: string; ini
           <Field label="First name">
             <Input value={v.firstName} onChange={(e) => update("firstName", e.target.value)} required maxLength={60} />
           </Field>
-          <Field label="Nickname" hint="What Santa should call them, if different.">
-            <Input value={v.nickname} onChange={(e) => update("nickname", e.target.value)} maxLength={60} />
+          <Field label="What Santa calls them (optional)" hint="Only if they go by something other than their first name, like a nickname. Not a last name. Leave blank to use their first name.">
+            <Input value={v.nickname} onChange={(e) => update("nickname", e.target.value)} maxLength={60} placeholder={v.firstName ? `Leave blank for "${v.firstName}"` : "e.g. Bear"} />
           </Field>
           <Field label="Age">
             <Input
