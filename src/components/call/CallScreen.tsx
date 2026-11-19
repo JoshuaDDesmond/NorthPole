@@ -13,6 +13,7 @@ import { CallTimer } from "./CallTimer";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { PhoneFrame } from "./PhoneFrame";
 import { SantaContactPhoto } from "./SantaContactPhoto";
+import { SlowLineNote, useSlowLineNote } from "./SlowLineNote";
 
 type Props = {
   childId: string;
@@ -40,6 +41,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
   const [childSpeaking, setChildSpeaking] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [slowNote, slowLine] = useSlowLineNote();
 
   const managerRef = useRef<VoiceSessionManager | ElevenLabsSession | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -65,6 +67,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
       setSantaSpeaking(false);
       setChildSpeaking(false);
       setView("calling");
+      slowLine.callStarted(Boolean(resume));
 
       // Create/unlock audio inside the user gesture so mobile browsers allow playback.
       if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
@@ -75,8 +78,12 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
 
       const Engine = provider === "elevenlabs" ? ElevenLabsSession : VoiceSessionManager;
       const manager = new Engine(childId, {
-        onPhase: setPhase,
+        onPhase: (p) => {
+          setPhase(p);
+          if (p === "reconnecting") slowLine.reconnecting();
+        },
         onError: (code, message) => {
+          slowLine.stop();
           releaseExtras();
           setError({ code, message });
           setView("error");
@@ -84,6 +91,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
         onConnected: ({ connectedAt: at }) => {
           setConnectedAt(at);
           setView("connected");
+          slowLine.connected();
           if (!speakerOn) manager.setSpeakerVolume(false);
           if (selectedOutput !== "default") void manager.setOutputDevice(selectedOutput).catch(() => {});
           if (ambientSound && audioCtxRef.current) {
@@ -93,9 +101,13 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
           const wl = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<WakeLockHandle> } }).wakeLock;
           wl?.request("screen").then((h) => (wakeLockRef.current = h)).catch(() => {});
         },
-        onChildSpeaking: setChildSpeaking,
+        onChildSpeaking: (speaking) => {
+          setChildSpeaking(speaking);
+          slowLine.childSpeaking(speaking);
+        },
         onRemaining: setRemaining,
         onEnded: (info) => {
+          slowLine.stop();
           releaseExtras();
           setSantaSpeaking(false);
           setChildSpeaking(false);
@@ -117,7 +129,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
         /* surfaced through onError */
       }
     },
-    [childId, ambientSound, releaseExtras, speakerOn, selectedOutput, provider],
+    [childId, ambientSound, releaseExtras, speakerOn, selectedOutput, provider, slowLine],
   );
 
   useEffect(() => {
@@ -232,7 +244,12 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
                 </p>
               </>
             )}
-            {view === "calling" && <ConnectionStatus phase={phase === "requesting_mic" ? "requesting_mic" : phase === "reconnecting" ? "reconnecting" : "connecting"} />}
+            {view === "calling" && (
+              <>
+                <ConnectionStatus phase={phase === "requesting_mic" ? "requesting_mic" : phase === "reconnecting" ? "reconnecting" : "connecting"} />
+                <SlowLineNote note={slowNote} />
+              </>
+            )}
             {view === "connected" && (
               <>
                 <ConnectionStatus phase={phase === "reconnecting" ? "reconnecting" : "connected"} />
@@ -243,10 +260,17 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
 
           {view === "connected" && (
             <div className="flex w-full flex-col items-center gap-3 animate-fade-in">
-              <AudioWaveform readLevels={readLevels} onSpeakingChange={setSantaSpeaking} />
+              <AudioWaveform
+                readLevels={readLevels}
+                onSpeakingChange={(speaking) => {
+                  setSantaSpeaking(speaking);
+                  slowLine.santaSpeaking(speaking);
+                }}
+              />
               <p className="h-5 text-xs font-medium tracking-wide text-mist" aria-live="polite">
                 {activityLabel}
               </p>
+              <SlowLineNote note={slowNote} />
               {remaining !== null && remaining <= 60 && remaining > 0 && (
                 <p className="rounded-full border border-gold/30 px-3 py-1 text-xs text-gold">About a minute left on the line</p>
               )}

@@ -701,6 +701,29 @@ await check("wishes a kid tells Santa land on the list for review, then reach Sa
   assert(mock.sessions.at(-1).session.instructions.includes("Bauer Vapor hockey skates (size 8, black)"), "kept wish missing from next call");
   await kid(`/api/call/${s2.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
 });
+await check("a slow reply shows a North Pole weather note, and Santa speaking clears it", async () => {
+  await page.getByRole("button", { name: "Call Santa Again" }).click();
+  await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
+  await peer.evaluate(() => window.__speak(true));
+  await sleep(1200);
+  await peer.evaluate(() => window.__speak(false));
+  await sleep(800);
+  await peer.evaluate(() => window.__dc.send(JSON.stringify({ type: "input_audio_buffer.speech_started" })));
+  await sleep(900);
+  await peer.evaluate(() => window.__dc.send(JSON.stringify({ type: "input_audio_buffer.speech_stopped" })));
+  const note = page.getByTestId("slow-line-note");
+  await sleep(2500);
+  assert((await note.count()) === 0, "note appeared too early");
+  await note.waitFor({ timeout: 5000 });
+  const text = await note.innerText();
+  assert(/North Pole|blizzard|snow|northern lights|antenna/i.test(text), `unexpected note: ${text}`);
+  await page.screenshot({ path: join(SHOTS, "09-slow-line-note.png") });
+  await peer.evaluate(() => window.__speak(true));
+  await note.waitFor({ state: "detached", timeout: 4000 });
+  await peer.evaluate(() => window.__speak(false));
+  await page.getByRole("button", { name: "End Call" }).click();
+  await page.getByText("Call ended").waitFor({ timeout: 8000 });
+});
 await check("goodbye: the child can answer once, Santa says one last bye, then the call hangs up", async () => {
   await page.getByRole("button", { name: "Call Santa Again" }).click();
   await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
