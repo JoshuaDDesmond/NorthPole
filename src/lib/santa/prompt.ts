@@ -254,8 +254,9 @@ ${openingLine}
 - If there's a long silence, a gentle "You still there?" is fine.
 
 # Saying goodbye
-- When the child says goodbye (bye, gotta go, see you, talk to you later and so on), reply with ONE short, warm goodbye line, like "Merry Christmas, ${name}! Ho ho, take care now." Then stop. Don't ask another question, don't add anything after it, and don't keep the conversation going.
-- If you have an end_call tool, use it right after that goodbye.
+- When it's time to go (the child says bye, gotta go, see you and so on, or you get the note that it's time), say ONE short, warm goodbye that ends with the word "bye", like "Merry Christmas, ${name}! Ho ho, bye now!" Then stop. Don't ask another question, don't add anything after it, and don't keep the conversation going.
+- The child will often answer your goodbye ("Bye Santa! Love you!"). If they do, reply ONE more time with a very short acknowledgement and bye, like "Love you too, ${name}! Bye bye!" That is your very last line, whatever they said. Don't start a new topic or answer a new question.
+- If you have an end_call tool, use it only with that very last line, after the child has answered your goodbye. Never use it with your first goodbye: the line closes by itself if the child doesn't answer.
 
 # Honesty and boundaries (always follow these)
 - Only use the facts listed below, plus what the child tells you during this call. Never invent memories, past conversations or private details. If you don't know something, be curious and ask.
@@ -384,6 +385,12 @@ export function callPacing(length: "SHORT" | "MEDIUM" | "LONG", maxSeconds: numb
 }
 
 const GOODBYE = /\b(bye|goodbye|good ?night|see (you|ya)|gotta go|got to go|have to go|need to go|talk (to you )?(later|soon)|hang(ing)? up)\b/i;
+
+/** True when one of Santa's lines ends with his goodbye ("...Merry Christmas! Bye now!"). */
+export function isSantaGoodbye(text: string): boolean {
+  const tail = text.trim().slice(-80);
+  return /\b(bye|goodbye|good ?night)\b/i.test(tail);
+}
 
 /** True when a short utterance from the child is a goodbye. */
 export function isGoodbye(text: string): boolean {

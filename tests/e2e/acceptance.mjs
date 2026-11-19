@@ -701,20 +701,49 @@ await check("wishes a kid tells Santa land on the list for review, then reach Sa
   assert(mock.sessions.at(-1).session.instructions.includes("Bauer Vapor hockey skates (size 8, black)"), "kept wish missing from next call");
   await kid(`/api/call/${s2.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
 });
-await check("when the child says goodbye, the call hangs up after Santa's goodbye", async () => {
+await check("goodbye: the child can answer once, Santa says one last bye, then the call hangs up", async () => {
   await page.getByRole("button", { name: "Call Santa Again" }).click();
   await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
   await sleep(16000); // goodbyes in the first 15 seconds are ignored
   await peer.evaluate(() => {
     window.__dc.send(JSON.stringify({ type: "conversation.item.input_audio_transcription.completed", transcript: "Okay bye Santa!" }));
     window.__dc.send(JSON.stringify({ type: "response.created" }));
-    window.__dc.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "Merry Christmas, Ace! Take care now." }));
+    window.__dc.send(JSON.stringify({ type: "output_audio_buffer.started" }));
+    window.__dc.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "Merry Christmas, Ace! Ho ho, bye now!" }));
+    window.__dc.send(JSON.stringify({ type: "response.done" }));
+    window.__dc.send(JSON.stringify({ type: "output_audio_buffer.stopped" }));
+  });
+  await sleep(2500);
+  assert(await page.getByText("Call ended").count() === 0, "hung up before the child could answer");
+  await peer.evaluate(() => {
+    window.__dc.send(JSON.stringify({ type: "input_audio_buffer.speech_started" }));
+    window.__dc.send(JSON.stringify({ type: "input_audio_buffer.speech_stopped" }));
+  });
+  await sleep(4000); // past the normal pause: the line stays open for Santa's answer
+  assert(await page.getByText("Call ended").count() === 0, "hung up before Santa answered");
+  await peer.evaluate(() => {
+    window.__dc.send(JSON.stringify({ type: "response.created" }));
+    window.__dc.send(JSON.stringify({ type: "output_audio_buffer.started" }));
+    window.__dc.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "Love you too, Ace! Bye bye!" }));
+    window.__dc.send(JSON.stringify({ type: "response.done" }));
+    window.__dc.send(JSON.stringify({ type: "output_audio_buffer.stopped" }));
+  });
+  await page.getByText("Call ended").waitFor({ timeout: 3000 });
+  const row = (await db.query(`SELECT status FROM "Call" ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
+  assert(row.status === "COMPLETED", `status ${row.status}`);
+});
+await check("goodbye: if the child doesn't answer Santa's bye, the call hangs up on its own", async () => {
+  await page.getByRole("button", { name: "Call Santa Again" }).click();
+  await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
+  await sleep(16000);
+  await peer.evaluate(() => {
+    window.__dc.send(JSON.stringify({ type: "conversation.item.input_audio_transcription.completed", transcript: "I gotta go, bye!" }));
+    window.__dc.send(JSON.stringify({ type: "response.created" }));
+    window.__dc.send(JSON.stringify({ type: "output_audio_buffer.started" }));
     window.__dc.send(JSON.stringify({ type: "response.done" }));
     window.__dc.send(JSON.stringify({ type: "output_audio_buffer.stopped" }));
   });
   await page.getByText("Call ended").waitFor({ timeout: 8000 });
-  const row = (await db.query(`SELECT status, "endReason" FROM "Call" ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
-  assert(row.status === "COMPLETED", `status ${row.status}`);
 });
 await check("client enforces the call duration limit", async () => {
   await parent("/api/parent/settings", { method: "PATCH", body: { maxCallMinutes: 1 } });

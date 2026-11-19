@@ -295,7 +295,9 @@ describe("call pacing and goodbyes", async () => {
     expect(keepGoingNudge()).toMatch(/Don't start saying goodbye yet/);
     expect(timeToWrapUpNudge()).toMatch(/start wrapping up/);
     const text = buildSantaInstructions(baseInput());
-    expect(text).toMatch(/reply with ONE short, warm goodbye line/);
+    expect(text).toMatch(/say ONE short, warm goodbye that ends with the word "bye"/);
+    expect(text).toMatch(/reply ONE more time with a very short acknowledgement and bye/);
+    expect(text).toMatch(/Never use it with your first goodbye/);
     expect(text).toMatch(/Don't start saying goodbye on your own before you get that note/);
   });
 });

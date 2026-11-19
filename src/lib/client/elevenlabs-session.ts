@@ -1,7 +1,8 @@
 "use client";
 
 import type { VoiceConversation } from "@elevenlabs/client";
-import { isGoodbye, keepGoingNudge, timeToWrapUpNudge, wrapUpNudge } from "../santa/prompt";
+import { isGoodbye, isSantaGoodbye, keepGoingNudge, timeToWrapUpNudge, wrapUpNudge } from "../santa/prompt";
+import { GoodbyeFlow } from "./goodbye";
 import { CallError, friendlyError, type CallErrorCode, type CallPhase, type EndReason, type TranscriptTurn, type VoiceSessionEvents } from "./voice-session";
 
 /**
@@ -47,9 +48,8 @@ export class ElevenLabsSession {
   private mode: "speaking" | "listening" = "listening";
   private volume = 1;
   private pacing: { keepGoingAt: number | null; wrapUpAt: number } | null = null;
-  /** Set once the child says goodbye; the call ends after Santa's goodbye finishes. */
-  private closing = false;
-  private closingSpoke = false;
+  /** Santa's goodbye, one answer from the child, Santa's last word, then hang up. */
+  private goodbye = new GoodbyeFlow(() => void this.end("user_hangup"));
 
   constructor(
     private readonly childId: string,
@@ -133,13 +133,18 @@ export class ElevenLabsSession {
           const text = String(m.message ?? "").trim();
           if (!text) return;
           if (role === "user" && this.collectTranscript) this.pushTurn("child", text);
-          if (role === "user" && isGoodbye(text)) this.beginClosing();
-          if (role === "agent" || role === "ai") this.pushTurn("santa", text);
+          if (role === "user") {
+            this.goodbye.childSpoke();
+            if (isGoodbye(text)) this.beginClosing();
+          }
+          if (role === "agent" || role === "ai") {
+            this.pushTurn("santa", text);
+            if (isSantaGoodbye(text) && this.elapsedSeconds >= 45) this.beginClosing();
+          }
         },
         onModeChange: ({ mode }) => {
-          // After the child's goodbye: hang up once Santa has finished his goodbye line.
-          if (this.closing && mode === "speaking") this.closingSpoke = true;
-          if (this.closing && this.closingSpoke && mode === "listening") this.timers.push(setTimeout(() => void this.end("user_hangup"), 700));
+          if (mode === "speaking" && this.mode !== "speaking") this.goodbye.santaStarted();
+          if (mode === "listening" && this.mode === "speaking") this.goodbye.santaFinished();
           this.mode = mode;
           if (mode === "speaking" && this.childSpeaking) {
             this.childSpeaking = false;
@@ -197,6 +202,7 @@ export class ElevenLabsSession {
   private pollChildSpeaking() {
     if (!this.conversation || this.ended) return;
     const speaking = this.mode === "listening" && this.conversation.getInputVolume() > CHILD_SPEAKING_THRESHOLD;
+    if (speaking) this.goodbye.childSpoke();
     if (speaking !== this.childSpeaking) {
       this.childSpeaking = speaking;
       this.events.onChildSpeaking?.(speaking);
@@ -217,16 +223,14 @@ export class ElevenLabsSession {
   }
 
   private sendNote(text: string) {
-    if (this.ended || this.closing || !this.conversation) return;
+    if (this.ended || this.goodbye.active || !this.conversation) return;
     this.conversation.sendContextualUpdate(text);
   }
 
-  /** The child said goodbye: Santa says one goodbye (or ends the call himself), then we hang up. */
+  /** Goodbyes have started (the child's or Santa's). See GoodbyeFlow for how the call ends. */
   private beginClosing() {
-    if (this.closing || this.ended || this.elapsedSeconds < 15) return;
-    this.closing = true;
-    this.closingSpoke = false;
-    this.timers.push(setTimeout(() => void this.end("user_hangup"), 12_000));
+    if (this.ended || this.elapsedSeconds < 15) return;
+    this.goodbye.begin();
   }
 
   private sendWrapUp(secondsLeft: number) {
@@ -358,6 +362,7 @@ export class ElevenLabsSession {
   }
 
   private cleanup() {
+    this.goodbye.dispose();
     this.timers.forEach(clearTimeout);
     this.intervals.forEach(clearInterval);
     this.timers = [];

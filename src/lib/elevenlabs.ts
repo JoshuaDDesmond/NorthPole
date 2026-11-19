@@ -62,7 +62,7 @@ export async function getConversationToken(agentId: string, participantName: str
 }
 
 /** Bump when agentConfig changes; existing agents are updated automatically before the next call. */
-export const AGENT_CONFIG_VERSION = 2;
+export const AGENT_CONFIG_VERSION = 3;
 
 /** Short listener sounds that should never make Santa stop mid-sentence. */
 const BACKCHANNEL_TERMS = ["uh huh", "uh-huh", "mhm", "mm hmm", "mm-hmm", "hmm", "mm", "yeah", "yep", "yes", "okay", "ok", "oh", "ah", "wow", "cool", "nice", "haha", "ha", "right", "sure"];
@@ -88,7 +88,7 @@ export function agentConfig(opts: { voiceId: string | null; llm: string; maxCall
               type: "system",
               name: "end_call",
               description:
-                "End the phone call. Use it right after the child says goodbye or clearly wants to hang up, or after you have said your own goodbye when told the time is up. Include your short, warm goodbye as the message. Never end the call in the middle of the conversation.",
+                "End the phone call. Use it only for your very last line: after you have said goodbye AND the child has answered your goodbye, give one short acknowledgement and bye, then end the call. Never use it with your first goodbye, and never in the middle of the conversation.",
               params: { system_tool_type: "end_call" },
             },
           },
