@@ -75,6 +75,7 @@ model Family {
   autoRecallCalls         Boolean @default(true) // Santa gets recaps of recent calls without approval
   ambientSound            Boolean @default(false)
   elevenAgentId           String? // ElevenLabs agent created by the app
+  elevenAgentVersion      Int     @default(0) // agent settings version last pushed to ElevenLabs
 
   // Contact photo (stored in the database so it works on serverless hosts)
   santaPhoto          Bytes?

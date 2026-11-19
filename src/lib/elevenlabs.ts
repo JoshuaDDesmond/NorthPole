@@ -61,6 +61,12 @@ export async function getConversationToken(agentId: string, participantName: str
   return { token: body.token, conversationId: body.conversation_id ?? null };
 }
 
+/** Bump when agentConfig changes; existing agents are updated automatically before the next call. */
+export const AGENT_CONFIG_VERSION = 2;
+
+/** Short listener sounds that should never make Santa stop mid-sentence. */
+const BACKCHANNEL_TERMS = ["uh huh", "uh-huh", "mhm", "mm hmm", "mm-hmm", "hmm", "mm", "yeah", "yep", "yes", "okay", "ok", "oh", "ah", "wow", "cool", "nice", "haha", "ha", "right", "sure"];
+
 /**
  * The agent's saved configuration. Each call overrides the prompt, greeting,
  * voice, model and speed for the child on the line, so these are only defaults.
@@ -76,14 +82,34 @@ export function agentConfig(opts: { voiceId: string | null; llm: string; maxCall
         prompt: {
           prompt: "You are Santa Claus on a warm, private phone call. Keep it kind, age-appropriate and never promise gifts.",
           llm: opts.llm,
+          // Lets Santa hang up himself once goodbyes are said.
+          built_in_tools: {
+            end_call: {
+              type: "system",
+              name: "end_call",
+              description:
+                "End the phone call. Use it right after the child says goodbye or clearly wants to hang up, or after you have said your own goodbye when told the time is up. Include your short, warm goodbye as the message. Never end the call in the middle of the conversation.",
+              params: { system_tool_type: "end_call" },
+            },
+          },
         },
+        // Background noise can't cut off Santa's opening hello.
+        disable_first_message_interruptions: true,
       },
       tts: {
         ...(opts.voiceId ? { voice_id: opts.voiceId } : {}),
         stability: 0.55,
         speed: 0.95,
       },
-      turn: { turn_eagerness: "patient", turn_timeout: 8 },
+      turn: {
+        // Answer promptly once the child finishes, without jumping in mid-sentence.
+        turn_eagerness: "normal",
+        turn_timeout: 8,
+        // "Uh-huh", "yeah", "okay" and similar murmurs don't interrupt Santa.
+        interruption_ignore_terms: BACKCHANNEL_TERMS,
+        interruption_ignore_term_languages: ["en"],
+        merge_with_default_ignore_terms: true,
+      },
       conversation: {
         // Safety-net cap enforced by ElevenLabs; the app enforces the family's real limits.
         max_duration_seconds: Math.min(3600, Math.max(1800, opts.maxCallMinutes * 60 + 120)),

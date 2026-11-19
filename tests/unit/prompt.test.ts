@@ -127,13 +127,14 @@ describe("buildSantaInstructions", () => {
     expect(text).toMatch(/Never invent memories/);
   });
 
-  it("keeps the call moving: good-this-year and Christmas wish come early", () => {
+  it("follows a Santa call shape: good-this-year and the wish early, then keeps the conversation going", () => {
     const text = buildSantaInstructions(baseInput());
-    expect(text).toMatch(/busiest time of year/);
+    expect(text).toMatch(/busy season at the workshop/);
     expect(text).toMatch(/have you been good this year/);
-    expect(text).toMatch(/by about the one-minute mark/);
+    expect(text).toMatch(/by about the one-and-a-half-minute mark/);
     expect(text).toMatch(/what they're hoping for this Christmas/);
-    expect(text).toMatch(/ONE more thing/);
+    expect(text).toMatch(/bring up one or two more things/);
+    expect(text).toMatch(/between three and five minutes/);
     expect(text).toMatch(/Ask one question at a time/);
   });
 
@@ -273,5 +274,28 @@ describe("text-engine briefing and greetings (ElevenLabs)", async () => {
     expect(santaGreeting({ name: "Ace", previousCallCount: 0, resuming: false, random: () => 0 })).toContain("finally made it through");
     expect(santaGreeting({ name: "Ace", previousCallCount: 3, resuming: false, random: () => 0.99 })).toContain("Ace");
     expect(santaGreeting({ name: "Ace", previousCallCount: 3, resuming: true, random: () => 0 })).toMatch(/where were we/i);
+  });
+});
+
+describe("call pacing and goodbyes", async () => {
+  const { callPacing, isGoodbye, keepGoingNudge, timeToWrapUpNudge } = await import("@/lib/santa/prompt");
+  it("targets 3 to 5 minutes by default and never past the time limit", () => {
+    expect(callPacing("MEDIUM", 600)).toEqual({ keepGoingAt: 110, wrapUpAt: 240 });
+    expect(callPacing("SHORT", 600)).toEqual({ keepGoingAt: 110, wrapUpAt: 180 });
+    expect(callPacing("LONG", 300).wrapUpAt).toBe(250);
+    expect(callPacing("MEDIUM", 120).keepGoingAt).toBeNull();
+  });
+  it("recognizes a child's goodbye without false alarms", () => {
+    for (const bye of ["Bye Santa!", "okay bye", "Goodbye!", "I gotta go", "see ya", "talk to you later", "good night Santa"]) expect(isGoodbye(bye)).toBe(true);
+    for (const not of ["Merry Christmas Santa!", "I want a new hockey stick", "yes I've been good", "my friend moved away last summer and we said goodbye at the airport which was sad"]) {
+      expect(isGoodbye(not)).toBe(false);
+    }
+  });
+  it("tells Santa to keep going early and wrap up later, and to stop after the goodbye", () => {
+    expect(keepGoingNudge()).toMatch(/Don't start saying goodbye yet/);
+    expect(timeToWrapUpNudge()).toMatch(/start wrapping up/);
+    const text = buildSantaInstructions(baseInput());
+    expect(text).toMatch(/reply with ONE short, warm goodbye line/);
+    expect(text).toMatch(/Don't start saying goodbye on your own before you get that note/);
   });
 });

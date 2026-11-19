@@ -92,6 +92,7 @@ export async function assembleCallContext(params: {
     instructions: buildSantaInstructions(input),
     voice: voiceSetting,
     speed: personality?.speakingPace ?? 0.9,
+    conversationLength: personality?.conversationLength ?? "MEDIUM",
     eleven: {
       voiceId: personality?.elevenVoiceId?.trim() || env.elevenLabsVoiceId,
       llm: personality?.elevenLlm && isKnownElevenLlm(personality.elevenLlm) ? personality.elevenLlm : DEFAULT_ELEVEN_LLM,

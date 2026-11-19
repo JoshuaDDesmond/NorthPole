@@ -1,7 +1,7 @@
 "use client";
 
 import type { VoiceConversation } from "@elevenlabs/client";
-import { wrapUpNudge } from "../santa/prompt";
+import { isGoodbye, keepGoingNudge, timeToWrapUpNudge, wrapUpNudge } from "../santa/prompt";
 import { CallError, friendlyError, type CallErrorCode, type CallPhase, type EndReason, type TranscriptTurn, type VoiceSessionEvents } from "./voice-session";
 
 /**
@@ -23,6 +23,7 @@ type StartResponse = {
   conversationToken?: string;
   overrides?: Record<string, unknown>;
   maxSeconds?: number;
+  pacing?: { keepGoingAt: number | null; wrapUpAt: number };
   collectTranscript?: boolean;
   error?: { code: string; message: string };
 };
@@ -45,6 +46,10 @@ export class ElevenLabsSession {
   private childSpeaking = false;
   private mode: "speaking" | "listening" = "listening";
   private volume = 1;
+  private pacing: { keepGoingAt: number | null; wrapUpAt: number } | null = null;
+  /** Set once the child says goodbye; the call ends after Santa's goodbye finishes. */
+  private closing = false;
+  private closingSpoke = false;
 
   constructor(
     private readonly childId: string,
@@ -102,6 +107,7 @@ export class ElevenLabsSession {
     }
     this.callId = data.callId!;
     this.maxSeconds = data.maxSeconds ?? 600;
+    this.pacing = data.pacing ?? null;
     this.collectTranscript = Boolean(data.collectTranscript);
     if (opts.resumeTranscript) this.transcript = [...opts.resumeTranscript];
     this.installPageHide();
@@ -127,9 +133,13 @@ export class ElevenLabsSession {
           const text = String(m.message ?? "").trim();
           if (!text) return;
           if (role === "user" && this.collectTranscript) this.pushTurn("child", text);
+          if (role === "user" && isGoodbye(text)) this.beginClosing();
           if (role === "agent" || role === "ai") this.pushTurn("santa", text);
         },
         onModeChange: ({ mode }) => {
+          // After the child's goodbye: hang up once Santa has finished his goodbye line.
+          if (this.closing && mode === "speaking") this.closingSpoke = true;
+          if (this.closing && this.closingSpoke && mode === "listening") this.timers.push(setTimeout(() => void this.end("user_hangup"), 700));
           this.mode = mode;
           if (mode === "speaking" && this.childSpeaking) {
             this.childSpeaking = false;
@@ -172,6 +182,11 @@ export class ElevenLabsSession {
       this.timers.push(setTimeout(() => this.sendWrapUp(WRAP_UP_LEAD_SECONDS), (this.maxSeconds - WRAP_UP_LEAD_SECONDS) * 1000));
     }
     this.timers.push(setTimeout(() => void this.end("time_limit"), this.maxSeconds * 1000));
+    // Quiet pacing cues: the model has no clock, so the app tells Santa when to keep going and when to wrap up.
+    if (this.pacing?.keepGoingAt) this.timers.push(setTimeout(() => this.sendNote(keepGoingNudge()), this.pacing.keepGoingAt * 1000));
+    if (this.pacing && this.pacing.wrapUpAt < this.maxSeconds - WRAP_UP_LEAD_SECONDS) {
+      this.timers.push(setTimeout(() => this.sendNote(timeToWrapUpNudge()), this.pacing.wrapUpAt * 1000));
+    }
     this.intervals.push(
       setInterval(() => this.events.onRemaining?.(Math.max(0, this.maxSeconds - this.elapsedSeconds)), 1000),
       setInterval(() => void this.heartbeat(), HEARTBEAT_MS),
@@ -199,6 +214,19 @@ export class ElevenLabsSession {
     } catch {
       /* transient */
     }
+  }
+
+  private sendNote(text: string) {
+    if (this.ended || this.closing || !this.conversation) return;
+    this.conversation.sendContextualUpdate(text);
+  }
+
+  /** The child said goodbye: Santa says one goodbye (or ends the call himself), then we hang up. */
+  private beginClosing() {
+    if (this.closing || this.ended || this.elapsedSeconds < 15) return;
+    this.closing = true;
+    this.closingSpoke = false;
+    this.timers.push(setTimeout(() => void this.end("user_hangup"), 12_000));
   }
 
   private sendWrapUp(secondsLeft: number) {

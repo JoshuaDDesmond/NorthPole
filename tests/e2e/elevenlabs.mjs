@@ -198,6 +198,9 @@ await check("Connect ElevenLabs creates a private agent with per-call overrides 
   assert(o.agent.prompt.prompt && o.agent.first_message && o.tts.voice_id && o.agent.prompt.llm, "overrides not enabled");
   assert(cfg.conversation_config.tts.voice_id === DEFAULT_VOICE, "default voice not applied");
   assert(cfg.conversation_config.conversation.client_events.includes("user_transcript"), "transcripts not enabled");
+  assert(cfg.conversation_config.agent.prompt.built_in_tools.end_call.params.system_tool_type === "end_call", "end_call tool missing");
+  assert(cfg.conversation_config.turn.interruption_ignore_terms.includes("uh huh") && cfg.conversation_config.turn.merge_with_default_ignore_terms === true, "backchannel ignore terms missing");
+  assert(cfg.conversation_config.agent.disable_first_message_interruptions === true, "first message should not be interruptible");
   const again = await owner("/api/parent/elevenlabs/connect", { method: "POST" });
   assert(again.json.agentId === "agent_test_1" && mock.agents.size === 1, "reconnect should update, not duplicate");
   const status = await owner("/api/parent/voice-status");
@@ -224,12 +227,31 @@ await check("call start returns a one-time token and this child's briefing, with
   assert(row.model.startsWith("elevenlabs:") && row.openaiCallId === "conv_1", JSON.stringify(row));
 });
 
+await check("call start includes pacing cues for a 3 to 5 minute call", async () => {
+  assert(started.pacing && started.pacing.keepGoingAt === 110 && started.pacing.wrapUpAt === 240, JSON.stringify(started.pacing));
+});
+
 await check("connected, heartbeat and end work without trying to hang up via OpenAI", async () => {
   await kid(`/api/call/${started.callId}/connected`, { method: "POST" });
   const hb = await kid(`/api/call/${started.callId}/heartbeat`, { method: "POST" });
   assert(hb.json.stop === false, hb.text);
   const end = await kid(`/api/call/${started.callId}/end`, { method: "POST", body: { reason: "user_hangup", durationSec: 5 } });
   assert(end.status === 200, end.text);
+});
+
+await check("an existing agent gets updated settings automatically before the next call", async () => {
+  await db.query(`UPDATE "Family" SET "elevenAgentVersion" = 0`);
+  const patchesBefore = mock.requests.filter((r) => r.method === "PATCH").length;
+  const r = await kid("/api/call/start", { method: "POST", body: { childId } });
+  assert(r.status === 200, `start ${r.status} ${r.text}`);
+  const patches = mock.requests.filter((x) => x.method === "PATCH");
+  assert(patches.length === patchesBefore + 1 && patches.at(-1).url.endsWith("/agent_test_1"), "agent was not refreshed");
+  const v = (await db.query(`SELECT "elevenAgentVersion" v FROM "Family"`)).rows[0].v;
+  assert(v >= 2, `version not recorded (${v})`);
+  await kid(`/api/call/${r.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+  const again = await kid("/api/call/start", { method: "POST", body: { childId } });
+  assert(mock.requests.filter((x) => x.method === "PATCH").length === patches.length, "should not refresh again once up to date");
+  await kid(`/api/call/${again.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
 });
 
 await check("the parent's voice and model choices are used on the next call", async () => {

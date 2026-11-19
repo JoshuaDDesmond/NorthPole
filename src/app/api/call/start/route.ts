@@ -9,7 +9,8 @@ import { allowedCallSeconds } from "@/lib/time";
 import { assembleCallContext } from "@/lib/santa/context";
 import { createRealtimeCall, safetyIdentifier } from "@/lib/openai/realtime";
 import { env } from "@/lib/env";
-import { getConversationToken, upsertAgent } from "@/lib/elevenlabs";
+import { callPacing } from "@/lib/santa/prompt";
+import { AGENT_CONFIG_VERSION, getConversationToken, upsertAgent } from "@/lib/elevenlabs";
 import { DEFAULT_ELEVEN_LLM, isKnownElevenLlm } from "@/lib/santa/voices";
 
 export const dynamic = "force-dynamic";
@@ -84,19 +85,24 @@ export const POST = handle(async (req: NextRequest) => {
   const provider = env.voiceProvider;
   if (provider === "openai" && !body.sdp) throw new HttpError(400, "bad_request", "Missing call setup.");
   let agentId = provider === "elevenlabs" ? (family.elevenAgentId ?? env.elevenLabsAgentId) : null;
-  if (provider === "elevenlabs" && !agentId) {
-    // First ElevenLabs call: set up Santa's agent automatically instead of waiting for a parent.
+  if (provider === "elevenlabs" && (!agentId || family.elevenAgentVersion < AGENT_CONFIG_VERSION)) {
+    // Set up Santa's agent on the first call, or push updated agent settings after an app update.
     try {
       const personality = await db.santaPersonality.findUnique({ where: { familyId: family.id } });
-      agentId = await upsertAgent(null, {
+      agentId = await upsertAgent(agentId, {
         voiceId: personality?.elevenVoiceId ?? env.elevenLabsVoiceId,
         llm: personality?.elevenLlm && isKnownElevenLlm(personality.elevenLlm) ? personality.elevenLlm : DEFAULT_ELEVEN_LLM,
         maxCallMinutes: family.maxCallMinutes,
       });
-      await db.family.update({ where: { id: family.id }, data: { elevenAgentId: agentId } });
+      await db.family.update({ where: { id: family.id }, data: { elevenAgentId: agentId, elevenAgentVersion: AGENT_CONFIG_VERSION } });
     } catch (err) {
-      console.error("[elevenlabs] automatic agent setup failed:", err instanceof HttpError ? err.message : "unknown");
-      throw new HttpError(503, "voice_not_configured", "Santa's phone line isn't ready yet. A parent can check Settings → Voice service for details.");
+      if (family.elevenAgentId) {
+        // An existing agent still works with its old settings; don't block the call over a refresh.
+        console.error("[elevenlabs] agent settings refresh failed:", err instanceof HttpError ? err.message : "unknown");
+      } else {
+        console.error("[elevenlabs] automatic agent setup failed:", err instanceof HttpError ? err.message : "unknown");
+        throw new HttpError(503, "voice_not_configured", "Santa's phone line isn't ready yet. A parent can check Settings → Voice service for details.");
+      }
     }
   }
 
@@ -134,6 +140,7 @@ export const POST = handle(async (req: NextRequest) => {
           tts: { ...(ctx.eleven.voiceId ? { voiceId: ctx.eleven.voiceId } : {}), speed: ctx.eleven.speed },
         },
         maxSeconds: allowed,
+        pacing: callPacing(ctx.conversationLength, allowed),
         collectTranscript: family.generateMemoryProposals,
         ambientSound: family.ambientSound,
       });
@@ -158,6 +165,7 @@ export const POST = handle(async (req: NextRequest) => {
       callId: call.id,
       answerSdp,
       maxSeconds: allowed,
+      pacing: callPacing(ctx.conversationLength, allowed),
       collectTranscript: family.generateMemoryProposals,
       ambientSound: family.ambientSound,
     });

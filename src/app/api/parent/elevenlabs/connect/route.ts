@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireOwner } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { upsertAgent } from "@/lib/elevenlabs";
+import { AGENT_CONFIG_VERSION, upsertAgent } from "@/lib/elevenlabs";
 import { env } from "@/lib/env";
 import { assertSameOrigin, handle, json } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
@@ -21,6 +21,6 @@ export const POST = handle(async (req: NextRequest) => {
     llm,
     maxCallMinutes: family.maxCallMinutes,
   });
-  await db.family.update({ where: { id: family.id }, data: { elevenAgentId: agentId } });
+  await db.family.update({ where: { id: family.id }, data: { elevenAgentId: agentId, elevenAgentVersion: AGENT_CONFIG_VERSION } });
   return json({ ok: true, agentId });
 });

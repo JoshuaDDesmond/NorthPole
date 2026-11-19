@@ -1,6 +1,6 @@
 "use client";
 
-import { wrapUpNudge } from "../santa/prompt";
+import { isGoodbye, keepGoingNudge, timeToWrapUpNudge, wrapUpNudge } from "../santa/prompt";
 
 /**
  * VoiceSessionManager
@@ -98,6 +98,10 @@ export class VoiceSessionManager {
   private ended = false;
   private wrapUpSent = false;
   private responding = false;
+  private pacing: { keepGoingAt: number | null; wrapUpAt: number } | null = null;
+  /** Set once the child says goodbye; the call ends after Santa's goodbye finishes playing. */
+  private closing = false;
+  private closingAnswered = false;
 
   constructor(
     private readonly childId: string,
@@ -193,6 +197,7 @@ export class VoiceSessionManager {
       callId?: string;
       answerSdp?: string;
       maxSeconds?: number;
+      pacing?: { keepGoingAt: number | null; wrapUpAt: number };
       collectTranscript?: boolean;
       error?: { code: string; message: string };
     };
@@ -201,6 +206,7 @@ export class VoiceSessionManager {
     }
     this.callId = data.callId;
     this.maxSeconds = data.maxSeconds ?? 600;
+    this.pacing = data.pacing ?? null;
     this.collectTranscript = Boolean(data.collectTranscript);
     if (opts.resumeTranscript) this.transcript = [...opts.resumeTranscript];
     this.installPageHide();
@@ -301,6 +307,11 @@ export class VoiceSessionManager {
       this.timers.push(setTimeout(() => this.sendWrapUp(WRAP_UP_LEAD_SECONDS), wrapAt));
     }
     this.timers.push(setTimeout(() => void this.end("time_limit"), this.maxSeconds * 1000));
+    // Quiet pacing cues: the model has no clock, so the app tells Santa when to keep going and when to wrap up.
+    if (this.pacing?.keepGoingAt) this.timers.push(setTimeout(() => this.sendSystemNote(keepGoingNudge()), this.pacing.keepGoingAt * 1000));
+    if (this.pacing && this.pacing.wrapUpAt < this.maxSeconds - WRAP_UP_LEAD_SECONDS) {
+      this.timers.push(setTimeout(() => this.sendSystemNote(timeToWrapUpNudge()), this.pacing.wrapUpAt * 1000));
+    }
     this.intervals.push(
       setInterval(() => {
         const remaining = Math.max(0, this.maxSeconds - this.elapsedSeconds);
@@ -324,6 +335,20 @@ export class VoiceSessionManager {
     } catch {
       /* transient network issue; the connection watcher handles real drops */
     }
+  }
+
+  /** Adds a quiet instruction to the conversation without prompting Santa to speak. */
+  private sendSystemNote(text: string) {
+    if (this.ended || this.closing) return;
+    this.send({ type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text }] } });
+  }
+
+  /** The child said goodbye: let Santa say one goodbye, then hang up once it has played. */
+  private beginClosing() {
+    if (this.closing || this.ended || this.elapsedSeconds < 15) return;
+    this.closing = true;
+    this.closingAnswered = false;
+    this.timers.push(setTimeout(() => void this.end("user_hangup"), 12_000));
   }
 
   private sendWrapUp(secondsLeft: number) {
@@ -356,9 +381,15 @@ export class VoiceSessionManager {
         break;
       case "response.done":
         this.responding = false;
+        if (this.closing) this.closingAnswered = true;
+        break;
+      case "output_audio_buffer.stopped":
+        // Santa's goodbye has finished playing.
+        if (this.closing && this.closingAnswered) this.timers.push(setTimeout(() => void this.end("user_hangup"), 700));
         break;
       case "conversation.item.input_audio_transcription.completed":
         if (this.collectTranscript && ev.transcript?.trim()) this.pushTurn("child", ev.transcript);
+        if (ev.transcript && isGoodbye(ev.transcript)) this.beginClosing();
         break;
       case "response.output_audio_transcript.done":
         if (ev.transcript?.trim()) this.pushTurn("santa", ev.transcript);
