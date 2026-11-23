@@ -46,6 +46,7 @@ const END_REASONS: Record<string, string> = {
   goodbye: "Ended after goodbyes",
   user_hangup: "Hung up from the call screen",
   santa_hangup: "Voice service ended the call",
+  service_dropped: "Voice service dropped the line (reconnected)",
   time_limit: "Time limit reached",
   server_time_limit: "Time limit reached",
   connection_lost: "Line dropped",

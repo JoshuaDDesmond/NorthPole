@@ -153,7 +153,7 @@ export const callStartSchema = z.object({
 });
 
 export const callEndSchema = z.object({
-  reason: z.enum(["user_hangup", "goodbye", "santa_hangup", "time_limit", "connection_lost", "error", "page_closed", "cancelled", "server_stop"]),
+  reason: z.enum(["user_hangup", "goodbye", "santa_hangup", "service_dropped", "time_limit", "connection_lost", "error", "page_closed", "cancelled", "server_stop"]),
   durationSec: z.number().int().min(0).max(4 * 3600).optional(),
   transcript: transcriptSchema.optional(),
 });

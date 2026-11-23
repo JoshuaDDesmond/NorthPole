@@ -62,7 +62,7 @@ export async function getConversationToken(agentId: string, participantName: str
 }
 
 /** Bump when agentConfig changes; existing agents are updated automatically before the next call. */
-export const AGENT_CONFIG_VERSION = 4;
+export const AGENT_CONFIG_VERSION = 5;
 
 /** Short listener sounds that should never make Santa stop mid-sentence. */
 const BACKCHANNEL_TERMS = ["uh huh", "uh-huh", "mhm", "mm hmm", "mm-hmm", "hmm", "mm", "yeah", "yep", "yes", "okay", "ok", "oh", "ah", "wow", "cool", "nice", "haha", "ha", "right", "sure"];
@@ -90,7 +90,8 @@ export function agentConfig(opts: { voiceId: string | null; llm: string; maxCall
       },
       tts: {
         ...(opts.voiceId ? { voice_id: opts.voiceId } : {}),
-        stability: 0.55,
+        // Steadier voice: fewer odd blips in pitch or character.
+        stability: 0.7,
         speed: 0.95,
       },
       turn: {
@@ -121,11 +122,41 @@ export function agentConfig(opts: { voiceId: string | null; llm: string; maxCall
 }
 
 /** Creates the agent, or updates it if it already exists. Returns the agent id. */
+function isHangUpTool(tool: unknown) {
+  return JSON.stringify(tool ?? null).includes("end_call");
+}
+
+/**
+ * Santa must never hang up on his own. ElevenLabs can keep a hang-up tool in more than one place
+ * (the built-in tools and the prompt's tool list), so read the agent back and strip any that remain.
+ */
+async function ensureNoHangUpTool(agentId: string) {
+  const path = `/v1/convai/agents/${encodeURIComponent(agentId)}`;
+  const res = await el(path);
+  if (!res.ok) throw new HttpError(502, "agent_update_failed", `ElevenLabs couldn't read back Santa's agent${await detailSuffix(res)}`);
+  const agent = (await res.json()) as { conversation_config?: { agent?: { prompt?: { built_in_tools?: Record<string, unknown> | null; tools?: unknown[] | null } } } };
+  const prompt = agent.conversation_config?.agent?.prompt ?? {};
+  const builtIn = prompt.built_in_tools?.end_call;
+  const tools = Array.isArray(prompt.tools) ? prompt.tools : [];
+  const kept = tools.filter((t) => !isHangUpTool(t));
+  if (!builtIn && kept.length === tools.length) return;
+  const fix = await el(path, {
+    method: "PATCH",
+    body: JSON.stringify({
+      conversation_config: { agent: { prompt: { built_in_tools: { end_call: null }, ...(kept.length !== tools.length ? { tools: kept } : {}) } } },
+    }),
+  });
+  if (!fix.ok) throw new HttpError(502, "agent_update_failed", `ElevenLabs couldn't remove Santa's hang-up tool${await detailSuffix(fix)}`);
+}
+
 export async function upsertAgent(existingAgentId: string | null, opts: { voiceId: string | null; llm: string; maxCallMinutes: number }) {
   const config = agentConfig(opts);
   if (existingAgentId) {
     const res = await el(`/v1/convai/agents/${encodeURIComponent(existingAgentId)}`, { method: "PATCH", body: JSON.stringify(config) });
-    if (res.ok) return existingAgentId;
+    if (res.ok) {
+      await ensureNoHangUpTool(existingAgentId);
+      return existingAgentId;
+    }
     if (res.status !== 404) {
       throw new HttpError(502, "agent_update_failed", `ElevenLabs couldn't update Santa's agent${await detailSuffix(res)}`);
     }
@@ -146,6 +177,7 @@ export async function upsertAgent(existingAgentId: string | null, opts: { voiceI
   }
   const body = (await res.json()) as { agent_id?: string };
   if (!body.agent_id) throw new HttpError(502, "agent_create_failed", "ElevenLabs didn't return an agent id.");
+  await ensureNoHangUpTool(body.agent_id);
   return body.agent_id;
 }
 

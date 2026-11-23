@@ -36,7 +36,7 @@ export type EndInfo = {
   dropped: boolean;
 };
 
-export type EndReason = "user_hangup" | "goodbye" | "santa_hangup" | "time_limit" | "connection_lost" | "error" | "page_closed" | "cancelled" | "server_stop";
+export type EndReason = "user_hangup" | "goodbye" | "santa_hangup" | "service_dropped" | "time_limit" | "connection_lost" | "error" | "page_closed" | "cancelled" | "server_stop";
 
 export type VoiceSessionEvents = {
   onPhase?: (phase: CallPhase) => void;
@@ -410,7 +410,7 @@ export class VoiceSessionManager {
         // Santa finished speaking (or was talked over).
         this.santaAudioPlaying = false;
         this.goodbye.santaFinished();
-        if (this.timeUpPending) this.timers.push(setTimeout(() => void this.end("time_limit"), 700));
+        if (this.timeUpPending) this.timers.push(setTimeout(() => !this.santaIsTalking() && void this.end("time_limit"), 1200));
         break;
       case "conversation.item.input_audio_transcription.completed":
         if (this.collectTranscript && ev.transcript?.trim()) this.pushTurn("child", ev.transcript);
@@ -521,7 +521,7 @@ export class VoiceSessionManager {
     if (this.ended) return;
     this.ended = true;
     const duration = this.elapsedSeconds;
-    const dropped = reason === "connection_lost";
+    const dropped = reason === "connection_lost" || reason === "service_dropped";
     if (this.connectedAt) this.setPhase("ending");
     if (!opts.skipServerNotify) await this.notifyEnd(reason, duration);
     else void this.notifyEnd(reason, duration);

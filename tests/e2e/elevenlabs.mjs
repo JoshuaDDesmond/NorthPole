@@ -66,7 +66,17 @@ const mockServer = createServer(async (req, res) => {
   const agentMatch = url.pathname.match(/^\/v1\/convai\/agents\/([^/]+)$/);
   if (agentMatch) {
     if (!mock.agents.has(agentMatch[1])) return send(404, { detail: "not found" });
-    if (req.method === "PATCH") mock.agents.set(agentMatch[1], body);
+    if (req.method === "PATCH") {
+      const prev = mock.agents.get(agentMatch[1]);
+      const prevTools = prev?.conversation_config?.agent?.prompt?.tools;
+      const next = JSON.parse(JSON.stringify(body));
+      // Like ElevenLabs, a partial update keeps fields it doesn't mention (here: the prompt's tool list).
+      if (prevTools && next.conversation_config?.agent?.prompt && !("tools" in next.conversation_config.agent.prompt)) {
+        next.conversation_config.agent.prompt.tools = prevTools;
+      }
+      mock.agents.set(agentMatch[1], prev && !next.conversation_config?.agent?.first_message ? { ...prev, ...next, conversation_config: { ...prev.conversation_config, agent: { ...prev.conversation_config.agent, prompt: { ...prev.conversation_config.agent.prompt, ...next.conversation_config.agent.prompt } } } } : next);
+    }
+    if (req.method === "GET") return send(200, { agent_id: agentMatch[1], ...mock.agents.get(agentMatch[1]) });
     return send(200, { agent_id: agentMatch[1] });
   }
   if (req.method === "GET" && url.pathname === "/v1/convai/conversation/token") {
@@ -252,6 +262,18 @@ await check("an existing agent gets updated settings automatically before the ne
   const again = await kid("/api/call/start", { method: "POST", body: { childId } });
   assert(mock.requests.filter((x) => x.method === "PATCH").length === patches.length, "should not refresh again once up to date");
   await kid(`/api/call/${again.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+});
+
+await check("a hang-up tool left over in the agent's tool list is removed automatically", async () => {
+  const cfg = mock.agents.get("agent_test_1");
+  cfg.conversation_config.agent.prompt.tools = [{ type: "system", name: "end_call", params: { system_tool_type: "end_call" } }];
+  await db.query(`UPDATE "Family" SET "elevenAgentVersion" = 0`);
+  const r = await kid("/api/call/start", { method: "POST", body: { childId } });
+  assert(r.status === 200, `start ${r.status} ${r.text}`);
+  const after = mock.agents.get("agent_test_1").conversation_config.agent.prompt;
+  assert(Array.isArray(after.tools) && after.tools.length === 0, `tools still ${JSON.stringify(after.tools)}`);
+  assert(after.built_in_tools?.end_call == null, "built-in hang-up still set");
+  await kid(`/api/call/${r.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
 });
 
 await check("the parent's voice and model choices are used on the next call", async () => {

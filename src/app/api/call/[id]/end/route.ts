@@ -14,6 +14,7 @@ const STATUS_FOR_REASON: Record<string, CallStatus> = {
   user_hangup: "COMPLETED",
   goodbye: "COMPLETED",
   santa_hangup: "COMPLETED",
+  service_dropped: "DISCONNECTED",
   page_closed: "COMPLETED",
   time_limit: "LIMIT_REACHED",
   connection_lost: "DISCONNECTED",

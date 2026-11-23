@@ -194,7 +194,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
   }, []);
 
   const endedVariant =
-    endInfo?.reason === "connection_lost"
+    endInfo?.reason === "connection_lost" || endInfo?.reason === "service_dropped"
       ? "dropped"
       : endInfo?.reason === "time_limit"
         ? "time_limit"

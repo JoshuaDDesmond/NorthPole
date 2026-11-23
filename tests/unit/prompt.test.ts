@@ -131,6 +131,7 @@ describe("buildSantaInstructions", () => {
     const text = buildSantaInstructions(baseInput());
     expect(text).toMatch(/set everything aside for this call/);
     expect(text).toMatch(/Never make an excuse to leave or start saying goodbye on your own/);
+    expect(text).toMatch(/Never do impressions or voices of anyone else/);
     expect(text).toMatch(/have you been good this year/);
     expect(text).toMatch(/by about the one-and-a-half-minute mark/);
     expect(text).toMatch(/what they're hoping for this Christmas/);

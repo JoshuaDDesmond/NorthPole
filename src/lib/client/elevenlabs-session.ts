@@ -152,7 +152,7 @@ export class ElevenLabsSession {
           if (mode === "speaking" && this.mode !== "speaking") this.goodbye.santaStarted();
           if (mode === "listening" && this.mode === "speaking") {
             this.goodbye.santaFinished();
-            if (this.timeUpPending) this.timers.push(setTimeout(() => void this.end("time_limit"), 700));
+            if (this.timeUpPending) this.timers.push(setTimeout(() => !this.santaIsTalking() && void this.end("time_limit"), 1200));
           }
           this.mode = mode;
           if (mode === "speaking" && this.childSpeaking) {
@@ -187,8 +187,20 @@ export class ElevenLabsSession {
 
   private onDisconnect(details: { reason: string }) {
     if (this.ended) return;
-    // "agent": ElevenLabs ended the conversation on its side; "error": a dropped line.
-    const reason = details.reason === "error" && this.connectedAt ? "connection_lost" : details.reason === "agent" ? "santa_hangup" : "user_hangup";
+    // "agent": ElevenLabs ended the conversation on its side. Calls only end with goodbyes, so
+    // outside of goodbyes treat it like a dropped line and reconnect (Santa picks up where he left off).
+    // "error": a dropped line.
+    const reason =
+      details.reason === "error" && this.connectedAt
+        ? "connection_lost"
+        : details.reason === "agent"
+          ? this.goodbye.active
+            ? "goodbye"
+            : this.connectedAt
+              ? "service_dropped"
+              : "santa_hangup"
+          : "user_hangup";
+    if (details.reason === "agent" && !this.goodbye.active) console.warn("[elevenlabs] the voice service ended the call mid-conversation; reconnecting");
     void this.end(reason, { skipSessionEnd: true });
   }
 
@@ -345,7 +357,7 @@ export class ElevenLabsSession {
     else void this.notifyEnd(reason, duration);
     this.cleanup();
     this.setPhase("ended");
-    this.events.onEnded?.({ reason, durationSec: duration, dropped: reason === "connection_lost" });
+    this.events.onEnded?.({ reason, durationSec: duration, dropped: reason === "connection_lost" || reason === "service_dropped" });
   }
 
   async cancel() {
