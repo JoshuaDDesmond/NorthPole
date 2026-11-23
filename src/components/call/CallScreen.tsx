@@ -39,7 +39,6 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
   const [selectedOutput, setSelectedOutput] = useState("default");
   const [santaSpeaking, setSantaSpeaking] = useState(false);
   const [childSpeaking, setChildSpeaking] = useState(false);
-  const [remaining, setRemaining] = useState<number | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [slowNote, slowLine] = useSlowLineNote();
 
@@ -63,7 +62,6 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
       setError(null);
       setEndInfo(null);
       setMuted(false);
-      setRemaining(null);
       setSantaSpeaking(false);
       setChildSpeaking(false);
       setView("calling");
@@ -105,7 +103,6 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
           setChildSpeaking(speaking);
           slowLine.childSpeaking(speaking);
         },
-        onRemaining: setRemaining,
         onEnded: (info) => {
           slowLine.stop();
           releaseExtras();
@@ -271,9 +268,6 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
                 {activityLabel}
               </p>
               <SlowLineNote note={slowNote} />
-              {remaining !== null && remaining <= 60 && remaining > 0 && (
-                <p className="rounded-full border border-gold/30 px-3 py-1 text-xs text-gold">About a minute left on the line</p>
-              )}
             </div>
           )}
 

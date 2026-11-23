@@ -5,7 +5,7 @@ import {
   MAX_MEMORIES,
   selectMemories,
   selectTalkingPoints,
-  wrapUpNudge,
+  elvesNudge,
   type BuildInput,
   type MemoryInput,
   type TalkingPointInput,
@@ -157,10 +157,11 @@ describe("buildSantaInstructions", () => {
     expect(text).toMatch(/Never sound young/);
   });
 
-  it("states the call length limit", () => {
-    const input = baseInput();
-    input.call.maxMinutes = 7;
-    expect(buildSantaInstructions(input)).toContain("at most 7 minutes");
+  it("never tells Santa about a hard time limit; long calls end with the elves calling him away", () => {
+    const text = buildSantaInstructions(baseInput());
+    expect(text).not.toMatch(/at most \d+ minutes|seconds left/);
+    expect(text).toMatch(/only ends with goodbyes/);
+    expect(text).toMatch(/the elves are calling you away/);
   });
 
   it("adds reconnect context only when resuming", () => {
@@ -217,8 +218,9 @@ describe("time helpers in prompt", () => {
     expect(daysUntilChristmas(new Date("2026-12-26T15:00:00Z"), "America/New_York")).toBe(364);
   });
 
-  it("builds a wrap-up nudge", () => {
-    expect(wrapUpNudge(45)).toMatch(/seconds left/);
+  it("builds the elves-are-calling cue for a long call", () => {
+    expect(elvesNudge()).toMatch(/elves are calling you away/);
+    expect(elvesNudge()).toMatch(/ending with "bye"/);
   });
 });
 
@@ -279,10 +281,18 @@ describe("text-engine briefing and greetings (ElevenLabs)", async () => {
 
 describe("call pacing and goodbyes", async () => {
   const { callPacing, isGoodbye, timeToWrapUpNudge } = await import("@/lib/santa/prompt");
-  it("targets 3 to 5 minutes by default and never past the time limit", () => {
-    expect(callPacing("MEDIUM", 600)).toEqual({ wrapUpAt: 240 });
-    expect(callPacing("SHORT", 600)).toEqual({ wrapUpAt: 180 });
-    expect(callPacing("LONG", 300).wrapUpAt).toBe(250);
+  it("wraps up at the target length, sends the elves only on a long call, and never cuts in early", () => {
+    // Default: wrap up at 4 min, elves at the 10-minute per-call limit, backstop 3 min after that.
+    expect(callPacing("MEDIUM", 600)).toEqual({ wrapUpAt: 240, elvesAt: 600, hardStopAt: 780 });
+    expect(callPacing("SHORT", 600).wrapUpAt).toBe(180);
+    // A parent's short per-call limit brings the wrap-up earlier.
+    expect(callPacing("LONG", 300, { perCallSeconds: 300 }).wrapUpAt).toBe(240);
+    // Almost out of weekly minutes: the call still gets its normal length.
+    const low = callPacing("MEDIUM", 110, { perCallSeconds: 600 });
+    expect(low.wrapUpAt).toBe(240);
+    expect(low.elvesAt).toBe(300);
+    // A reconnect continues the same conversation's pacing.
+    expect(callPacing("MEDIUM", 500, { perCallSeconds: 500, alreadyTalkedSeconds: 100 }).wrapUpAt).toBe(140);
   });
   it("recognizes a child's goodbye without false alarms", () => {
     for (const bye of ["Bye Santa!", "okay bye", "Goodbye!", "I gotta go", "see ya", "talk to you later", "good night Santa"]) expect(isGoodbye(bye)).toBe(true);

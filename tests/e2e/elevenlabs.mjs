@@ -227,8 +227,8 @@ await check("call start returns a one-time token and this child's briefing, with
   assert(row.model.startsWith("elevenlabs:") && row.openaiCallId === "conv_1", JSON.stringify(row));
 });
 
-await check("call start includes pacing cues for a 3 to 5 minute call", async () => {
-  assert(started.pacing && started.pacing.wrapUpAt === 240 && !("keepGoingAt" in started.pacing), JSON.stringify(started.pacing));
+await check("call start paces a 3 to 5 minute call, with the elves only on a long call and no early cutoff", async () => {
+  assert(started.pacing && started.pacing.wrapUpAt === 240 && started.pacing.elvesAt === 600 && started.maxSeconds === 780, JSON.stringify(started.pacing));
 });
 
 await check("connected, heartbeat and end work without trying to hang up via OpenAI", async () => {

@@ -254,7 +254,8 @@ ${call.askedIfGoodBefore
 - Ask one question at a time and keep your own turns short, usually one to three sentences. Don't stack questions or keep drilling into the same topic.
 - Remember what's been said in this call and never ask something they already answered.
 - If the child interrupts you, stop and listen, then carry on through the shape above.
-- ${lengthGuide} This call can last at most ${call.maxMinutes} minutes. If you are told the time is nearly up, wrap up warmly within a turn or two.
+- ${lengthGuide} Never end the call in the middle of the conversation; it only ends with goodbyes.
+- If you get a quiet note that the call has run long, that's your cue that the elves are calling you away: let ${name} finish, tell them the elves need you (something fun, like a hiccup on the toy line or the reindeer getting into the cookies), say you have to run, and say goodbye. Only use that excuse when you get that note.
 - If there's a long silence, a gentle "You still there?" is fine.
 
 # Saying goodbye
@@ -342,8 +343,8 @@ export function timeToWrapUpNudge(): string {
 }
 
 /** Message injected near the time limit so Santa can say goodbye naturally. */
-export function wrapUpNudge(secondsLeft: number): string {
-  return `(Quiet note for Santa, not from the child: about ${Math.max(1, Math.round(secondsLeft / 10) * 10)} seconds left on the call. Finish your current thought, then say a warm, unhurried goodbye in your own words.)`;
+export function elvesNudge(): string {
+  return '(Quiet note for Santa, not from the child: this call has run long and it\'s time to go. Let the child finish, finish your own sentence, then tell them the elves are calling you away (make it fun: a hiccup on the toy line, the reindeer in the cookie jar), say you have to run, and give your goodbye ending with "bye".)';
 }
 
 /**
@@ -376,10 +377,17 @@ export function santaGreeting(opts: { name: string; previousCallCount: number; r
 }
 
 /** When to cue Santa to keep going and when to start wrapping up, in seconds from connect. */
-export function callPacing(length: "SHORT" | "MEDIUM" | "LONG", maxSeconds: number) {
-  const target = { SHORT: 180, MEDIUM: 240, LONG: 390 }[length];
-  const wrapUpAt = Math.max(60, Math.min(target, maxSeconds - 50));
-  return { wrapUpAt };
+export function callPacing(length: "SHORT" | "MEDIUM" | "LONG", allowedSeconds: number, opts: { perCallSeconds?: number; alreadyTalkedSeconds?: number } = {}) {
+  const target = { SHORT: 180, MEDIUM: 240, LONG: 390 }[length] - (opts.alreadyTalkedSeconds ?? 0);
+  const perCall = opts.perCallSeconds ?? allowedSeconds;
+  // Natural wrap-up at the target length (a parent's own per-call limit can bring it earlier).
+  const wrapUpAt = Math.max(60, Math.min(target, perCall - 60));
+  // Running unusually long: the elves call Santa away. Never sooner than a minute after the wrap-up cue,
+  // so a nearly-used weekly allowance never shortens a normal call.
+  const elvesAt = Math.max(wrapUpAt + 60, allowedSeconds);
+  // Last-resort backstop if Santa somehow never says goodbye (he still finishes his sentence).
+  const hardStopAt = elvesAt + 180;
+  return { wrapUpAt, elvesAt, hardStopAt };
 }
 
 // "Bye" anywhere in a short line, or a leaving phrase at the very end ("ok I have to go"),

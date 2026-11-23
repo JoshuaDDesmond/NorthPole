@@ -788,13 +788,29 @@ await check("goodbye: if the child doesn't answer Santa's bye, the call hangs up
   });
   await page.getByText("Call ended").waitFor({ timeout: 8000 });
 });
-await check("client enforces the call duration limit", async () => {
+await check("no hard cutoff: a long call gets the elves cue and ends only after Santa's goodbye", async () => {
   await parent("/api/parent/settings", { method: "PATCH", body: { maxCallMinutes: 1 } });
   await page.getByRole("button", { name: "Call Santa Again" }).click();
   await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
-  await page.getByText("That's all the time on the line for now.", { exact: false }).waitFor({ timeout: 80000 });
-  const row = (await db.query(`SELECT status FROM "Call" ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
-  assert(row.status === "LIMIT_REACHED", `status ${row.status}`);
+  // Per-call limit is 1 minute: wrap-up cue at 60s, elves cue at 120s, nothing ends the call on its own.
+  await sleep(75000);
+  assert((await page.getByText("Call ended").count()) === 0, "call was cut off at the limit");
+  const wrap = await peer.evaluate(() => window.__events.some((e) => JSON.stringify(e).includes("start wrapping up")));
+  assert(wrap, "wrap-up cue not sent");
+  await sleep(50000);
+  const elves = await peer.evaluate(() => window.__events.some((e) => JSON.stringify(e).includes("elves are calling you away")));
+  assert(elves, "elves cue not sent");
+  assert((await page.getByText("Call ended").count()) === 0, "call was cut off after the elves cue");
+  await peer.evaluate(() => {
+    window.__dc.send(JSON.stringify({ type: "response.created" }));
+    window.__dc.send(JSON.stringify({ type: "output_audio_buffer.started" }));
+    window.__dc.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "Oh! That's the elves calling, the toy line hiccuped again. I have to run, Ace. Bye now!" }));
+    window.__dc.send(JSON.stringify({ type: "response.done" }));
+    window.__dc.send(JSON.stringify({ type: "output_audio_buffer.stopped" }));
+  });
+  await page.getByText("Call ended").waitFor({ timeout: 8000 });
+  const row = (await db.query(`SELECT status, "endReason" FROM "Call" ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
+  assert(row.status === "COMPLETED" && row.endReason === "goodbye", `${row.status} ${row.endReason}`);
   await parent("/api/parent/settings", { method: "PATCH", body: { maxCallMinutes: 10 } });
 });
 await check("connection failure shows an honest error instead of a fake connection", async () => {

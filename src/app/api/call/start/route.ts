@@ -115,12 +115,19 @@ export const POST = handle(async (req: NextRequest) => {
   });
   if (!ctx) throw notFound();
 
+  // Calls end with goodbyes, not a hard cutoff: Santa wraps up at the target length and, if a call
+  // runs unusually long, the elves call him away. The stored limit is only a far-off backstop.
+  const pacing = callPacing(ctx.conversationLength, allowed, {
+    perCallSeconds: family.maxCallMinutes * 60 - carriedOver,
+    alreadyTalkedSeconds: carriedOver,
+  });
+
   const call = await db.call.create({
     data: {
       childId: child.id,
       deviceId: device.deviceId,
       resumedFromId,
-      maxSeconds: allowed,
+      maxSeconds: pacing.hardStopAt,
       voice: provider === "elevenlabs" ? (ctx.eleven.voiceId ?? "agent-default") : typeof ctx.voice === "string" ? ctx.voice : "custom",
     },
   });
@@ -139,8 +146,8 @@ export const POST = handle(async (req: NextRequest) => {
           agent: { prompt: { prompt: ctx.instructions, llm: ctx.eleven.llm }, firstMessage: ctx.eleven.firstMessage },
           tts: { ...(ctx.eleven.voiceId ? { voiceId: ctx.eleven.voiceId } : {}), speed: ctx.eleven.speed },
         },
-        maxSeconds: allowed,
-        pacing: callPacing(ctx.conversationLength, allowed),
+        maxSeconds: pacing.hardStopAt,
+        pacing,
         collectTranscript: family.generateMemoryProposals,
         ambientSound: family.ambientSound,
       });
@@ -164,8 +171,8 @@ export const POST = handle(async (req: NextRequest) => {
       provider,
       callId: call.id,
       answerSdp,
-      maxSeconds: allowed,
-      pacing: callPacing(ctx.conversationLength, allowed),
+      maxSeconds: pacing.hardStopAt,
+      pacing,
       collectTranscript: family.generateMemoryProposals,
       ambientSound: family.ambientSound,
     });

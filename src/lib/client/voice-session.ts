@@ -1,6 +1,6 @@
 "use client";
 
-import { isGoodbye, isSantaGoodbye, timeToWrapUpNudge, wrapUpNudge } from "../santa/prompt";
+import { isGoodbye, isSantaGoodbye, elvesNudge, timeToWrapUpNudge } from "../santa/prompt";
 import { GoodbyeFlow } from "./goodbye";
 
 /**
@@ -48,7 +48,6 @@ export type VoiceSessionEvents = {
 
 const CONNECT_TIMEOUT_MS = 20_000;
 const HEARTBEAT_MS = 20_000;
-const WRAP_UP_LEAD_SECONDS = 45;
 /** When time runs out mid-sentence, how long Santa gets to finish before the line closes. */
 const TIME_UP_GRACE_MS = 15_000;
 const DISCONNECT_GRACE_MS = 6_000;
@@ -101,7 +100,7 @@ export class VoiceSessionManager {
   private ended = false;
   private wrapUpSent = false;
   private responding = false;
-  private pacing: { wrapUpAt: number } | null = null;
+  private pacing: { wrapUpAt: number; elvesAt: number } | null = null;
   /** Santa's goodbye, one answer from the child, Santa's last word, then hang up. */
   private goodbye = new GoodbyeFlow(() => void this.end("goodbye"));
   /** Santa may only start the goodbyes himself once he's been told it's time. */
@@ -203,7 +202,7 @@ export class VoiceSessionManager {
       callId?: string;
       answerSdp?: string;
       maxSeconds?: number;
-      pacing?: { wrapUpAt: number };
+      pacing?: { wrapUpAt: number; elvesAt: number };
       collectTranscript?: boolean;
       error?: { code: string; message: string };
     };
@@ -307,19 +306,19 @@ export class VoiceSessionManager {
   }
 
   private startTimers() {
-    // Local enforcement of the call length (server enforces it too).
-    const wrapAt = Math.max(0, this.maxSeconds - WRAP_UP_LEAD_SECONDS) * 1000;
-    if (this.maxSeconds > WRAP_UP_LEAD_SECONDS + 15) {
-      this.timers.push(setTimeout(() => this.sendWrapUp(WRAP_UP_LEAD_SECONDS), wrapAt));
-    }
-    this.timers.push(setTimeout(() => this.timeUp(), this.maxSeconds * 1000));
-    // The model has no clock, so the app tells Santa when it's time to wrap up. Nothing else is sent mid-call.
-    if (this.pacing && this.pacing.wrapUpAt < this.maxSeconds - WRAP_UP_LEAD_SECONDS) {
-      this.timers.push(setTimeout(() => {
+    // The model has no clock, so the app tells Santa when to wrap up. Nothing else is sent mid-call,
+    // and the call only ends with goodbyes.
+    const wrapUpAt = this.pacing?.wrapUpAt ?? Math.max(60, this.maxSeconds - 300);
+    const elvesAt = this.pacing?.elvesAt ?? Math.max(120, this.maxSeconds - 180);
+    this.timers.push(
+      setTimeout(() => {
         this.wrapUpCueSent = true;
         this.sendSystemNote(timeToWrapUpNudge());
-      }, this.pacing.wrapUpAt * 1000));
-    }
+      }, wrapUpAt * 1000),
+      setTimeout(() => this.sendElves(), elvesAt * 1000),
+      // Last-resort backstop if Santa never says goodbye; even then he finishes his sentence.
+      setTimeout(() => this.timeUp(), this.maxSeconds * 1000),
+    );
     this.intervals.push(
       setInterval(() => {
         const remaining = Math.max(0, this.maxSeconds - this.elapsedSeconds);
@@ -337,8 +336,6 @@ export class VoiceSessionManager {
       const data = (await res.json()) as { stop?: boolean; reason?: string; remainingSeconds?: number };
       if (data.stop) {
         void this.end(data.reason === "time_limit" ? "time_limit" : "server_stop", { skipServerNotify: true });
-      } else if (typeof data.remainingSeconds === "number" && data.remainingSeconds <= WRAP_UP_LEAD_SECONDS) {
-        this.sendWrapUp(data.remainingSeconds);
       }
     } catch {
       /* transient network issue; the connection watcher handles real drops */
@@ -372,16 +369,14 @@ export class VoiceSessionManager {
     this.goodbye.begin();
   }
 
-  private sendWrapUp(secondsLeft: number) {
-    if (this.wrapUpSent || this.ended) return;
+  /** The call has run unusually long: the elves call Santa away, and he says goodbye. */
+  private sendElves() {
+    if (this.wrapUpSent || this.ended || this.goodbye.active) return;
     this.wrapUpSent = true;
     this.wrapUpCueSent = true;
-    this.send({
-      type: "conversation.item.create",
-      item: { type: "message", role: "system", content: [{ type: "input_text", text: wrapUpNudge(secondsLeft) }] },
-    });
-    if (!this.responding) this.send({ type: "response.create" });
+    this.sendSystemNote(elvesNudge());
   }
+
 
   private onServerEvent(raw: unknown) {
     if (typeof raw !== "string") return;
