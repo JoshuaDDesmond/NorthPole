@@ -192,6 +192,8 @@ model Child {
   topicsToAvoid        String   @default("")
   nextCallInstructions String   @default("")
   callingEnabled       Boolean  @default(true)
+  /// When the owner last reset this child's time limits. Calls before this don't count toward today's or this week's limit.
+  limitsResetAt        DateTime?
   sortOrder            Int      @default(0)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

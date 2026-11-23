@@ -496,6 +496,22 @@ await check("weekly usage limit blocks further calls with a friendly message", a
   await parent("/api/parent/settings", { method: "PATCH", body: { weeklyMinutesPerChild: 10 } });
   const r = await kid("/api/call/start", { method: "POST", body: { childId: benId, sdp: fakeOffer } });
   assert(r.status === 429 && r.json.error.code === "weekly_limit" && /this week/.test(r.json.error.message), `status ${r.status} ${r.text}`);
+});
+await check("the owner can reset a child's time limits without losing call history", async () => {
+  // Weekly limit is still 10 minutes and Ben has used it up.
+  const denied = await jamie("/api/parent/usage/reset", { method: "POST", body: { childId: benId } });
+  assert(denied.status === 401 || denied.status === 403, `non-owner reset ${denied.status}`);
+  const r = await parent("/api/parent/usage/reset", { method: "POST", body: { childId: benId } });
+  assert(r.status === 200 && r.json.reset === 1, `reset ${r.status} ${r.text}`);
+  const call = await kid("/api/call/start", { method: "POST", body: { childId: benId, sdp: fakeOffer } });
+  assert(call.status === 200, `after reset ${call.status} ${call.text}`);
+  await kid(`/api/call/${call.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+  const kept = (await db.query(`SELECT count(*)::int n FROM "Call" WHERE id='c_used'`)).rows[0].n;
+  assert(kept === 1, "call history was deleted");
+  const other = await parent("/api/parent/usage/reset", { method: "POST", body: { childId: "not-a-child" } });
+  assert(other.status === 404, `unknown child ${other.status}`);
+  const all = await parent("/api/parent/usage/reset", { method: "POST", body: {} });
+  assert(all.status === 200 && all.json.reset >= 2, `reset all ${all.text}`);
   await parent("/api/parent/settings", { method: "PATCH", body: { weeklyMinutesPerChild: 120 } });
 });
 await check("emergency off switch ends live calls and blocks new ones", async () => {

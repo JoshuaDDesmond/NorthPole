@@ -23,7 +23,10 @@ export async function usedSecondsThisWeek(childId: string, timezone: string, now
   return usedSecondsSince(childId, startOfLocalWeek(now, timezone), now);
 }
 
-async function usedSecondsSince(childId: string, since: Date, now: Date) {
+async function usedSecondsSince(childId: string, windowStart: Date, now: Date) {
+  // An owner reset starts the child's allowance fresh; earlier calls stay in the history.
+  const child = await db.child.findUnique({ where: { id: childId }, select: { limitsResetAt: true } });
+  const since = child?.limitsResetAt && child.limitsResetAt > windowStart ? child.limitsResetAt : windowStart;
   const calls = await db.call.findMany({
     where: { childId, startedAt: { gte: since }, connectedAt: { not: null } },
     select: { status: true, durationSec: true, connectedAt: true, startedAt: true },

@@ -1,12 +1,13 @@
 "use client";
 
-import { ExternalLink, Loader2, Wallet } from "lucide-react";
+import { ExternalLink, Loader2, RotateCcw, Wallet } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client/api";
 import { formatDuration } from "@/lib/time";
-import { Card, CardHeader } from "@/components/ui";
+import { Button, Card, CardHeader, useToast } from "@/components/ui";
 
-type ChildUsage = { childId: string; name: string; monthSeconds: number; monthCalls: number; weekSeconds: number };
+type ChildUsage = { childId: string; name: string; monthSeconds: number; monthCalls: number; weekSeconds: number; resetThisWeek?: boolean };
 export type UsageSummary = {
   monthLabel: string;
   weeklyLimitMinutes: number;
@@ -24,6 +25,24 @@ const minutes = (s: number) => (s < 60 ? `${s}s` : `${Math.round(s / 60)} min`);
 export function UsageCard({ usage }: { usage: UsageSummary }) {
   const [plan, setPlan] = useState<{ provider: string; subscription?: Subscription } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState<string | null>(null);
+  const router = useRouter();
+  const toast = useToast();
+
+  async function resetLimits(child?: ChildUsage) {
+    const who = child ? child.name : "every child";
+    if (!window.confirm(`Reset the time limits for ${who}? They'll get a fresh daily and weekly allowance starting now. Call history and spending aren't changed.`)) return;
+    setResetting(child?.childId ?? "all");
+    try {
+      await api("/api/parent/usage/reset", { method: "POST", body: child ? { childId: child.childId } : {} });
+      toast(child ? `${child.name}'s time limits are reset.` : "Time limits reset for everyone.");
+      router.refresh();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setResetting(null);
+    }
+  }
 
   useEffect(() => {
     api<{ provider: string; subscription?: Subscription }>("/api/parent/usage")
@@ -93,7 +112,14 @@ export function UsageCard({ usage }: { usage: UsageSummary }) {
                 of calls in {usage.monthLabel} · {usage.totalMonthCalls} call{usage.totalMonthCalls === 1 ? "" : "s"}
               </span>
             </p>
-            <p className="text-xs text-mist">Weekly limit: {usage.weeklyLimitMinutes} min per child</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-mist">Weekly limit: {usage.weeklyLimitMinutes} min per child</p>
+              {usage.perChild.length > 1 && (
+                <Button size="sm" variant="ghost" onClick={() => void resetLimits()} loading={resetting === "all"} disabled={resetting !== null}>
+                  <RotateCcw className="h-3.5 w-3.5" /> Reset all
+                </Button>
+              )}
+            </div>
           </div>
           {usage.perChild.length > 0 && (
             <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
@@ -107,12 +133,25 @@ export function UsageCard({ usage }: { usage: UsageSummary }) {
                         <div className={`h-full rounded-full ${weekPct >= 100 ? "bg-berry-2" : "bg-gold"}`} style={{ width: `${weekPct}%` }} />
                       </div>
                       <p className="mt-1 text-[11px] text-mist">
-                        This week {formatDuration(c.weekSeconds)} of {usage.weeklyLimitMinutes}:00
+                        This week {formatDuration(c.weekSeconds)} of {usage.weeklyLimitMinutes}:00{c.resetThisWeek ? " · reset" : ""}
+                        <span className="sm:hidden"> · {minutes(c.monthSeconds)} this month</span>
                       </p>
                     </div>
-                    <span className="w-28 shrink-0 text-right text-xs tabular-nums text-mist">
+                    <span className="hidden w-24 shrink-0 text-right text-xs tabular-nums text-mist sm:block">
                       {minutes(c.monthSeconds)} this month
                     </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void resetLimits(c)}
+                      loading={resetting === c.childId}
+                      disabled={resetting !== null}
+                      aria-label={`Reset ${c.name}'s time limits`}
+                      title="Reset time limits"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Reset</span>
+                    </Button>
                   </li>
                 );
               })}

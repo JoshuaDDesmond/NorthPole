@@ -152,6 +152,11 @@ export const callStartSchema = z.object({
   resumeTranscript: transcriptSchema.optional(),
 });
 
+export const usageResetSchema = z.object({
+  /** One child, or every child in the family when omitted. */
+  childId: z.string().min(1).max(64).optional(),
+});
+
 export const callEndSchema = z.object({
   reason: z.enum(["user_hangup", "goodbye", "santa_hangup", "service_dropped", "time_limit", "connection_lost", "error", "page_closed", "cancelled", "server_stop"]),
   durationSec: z.number().int().min(0).max(4 * 3600).optional(),

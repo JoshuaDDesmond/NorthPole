@@ -7,7 +7,7 @@ import { startOfLocalMonth, startOfLocalWeek } from "./time";
 export async function familyUsage(familyId: string, now = new Date()) {
   const family = await db.family.findUniqueOrThrow({
     where: { id: familyId },
-    select: { timezone: true, weeklyMinutesPerChild: true, children: { select: { id: true, firstName: true, nickname: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
+    select: { timezone: true, weeklyMinutesPerChild: true, children: { select: { id: true, firstName: true, nickname: true, limitsResetAt: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
   });
   const monthStart = startOfLocalMonth(now, family.timezone);
   const weekStart = startOfLocalWeek(now, family.timezone);
@@ -19,13 +19,16 @@ export async function familyUsage(familyId: string, now = new Date()) {
   const perChild = family.children.map((child) => {
     const mine = calls.filter((c) => c.childId === child.id);
     const month = mine.filter((c) => c.startedAt >= monthStart);
-    const week = mine.filter((c) => c.startedAt >= weekStart);
+    // Toward the weekly limit: this week's calls since any owner reset.
+    const countFrom = child.limitsResetAt && child.limitsResetAt > weekStart ? child.limitsResetAt : weekStart;
+    const week = mine.filter((c) => c.startedAt >= countFrom);
     return {
       childId: child.id,
       name: child.nickname || child.firstName,
       monthSeconds: month.reduce((s, c) => s + secs(c), 0),
       monthCalls: month.length,
       weekSeconds: week.reduce((s, c) => s + secs(c), 0),
+      resetThisWeek: Boolean(child.limitsResetAt && child.limitsResetAt > weekStart),
     };
   });
   return {
