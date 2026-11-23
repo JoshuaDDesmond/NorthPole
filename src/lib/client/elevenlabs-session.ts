@@ -3,6 +3,7 @@
 import type { VoiceConversation } from "@elevenlabs/client";
 import { isGoodbye, isSantaGoodbye, elvesNudge, timeToWrapUpNudge } from "../santa/prompt";
 import { GoodbyeFlow } from "./goodbye";
+import { chooseRunExcuse } from "./excuse";
 import { CallError, friendlyError, type CallErrorCode, type CallPhase, type EndReason, type TranscriptTurn, type VoiceSessionEvents } from "./voice-session";
 
 /**
@@ -199,7 +200,7 @@ export class ElevenLabsSession {
     this.timers.push(
       setTimeout(() => {
         this.wrapUpCueSent = true;
-        this.sendNote(timeToWrapUpNudge());
+        this.sendNote(timeToWrapUpNudge(chooseRunExcuse()));
       }, wrapUpAt * 1000),
       setTimeout(() => this.sendElves(), elvesAt * 1000),
       // Last-resort backstop if Santa never says goodbye; even then he finishes his sentence.
@@ -265,7 +266,7 @@ export class ElevenLabsSession {
     if (this.wrapUpSent || this.ended || this.goodbye.active) return;
     this.wrapUpSent = true;
     this.wrapUpCueSent = true;
-    this.sendNote(elvesNudge());
+    this.sendNote(elvesNudge(chooseRunExcuse()));
   }
 
 

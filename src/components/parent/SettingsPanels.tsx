@@ -217,9 +217,12 @@ export function CallingPreferencesPanel({ initial }: { initial: FamilySettingsVa
         <Field label="Time zone" hint="Used for Santa's sense of time and for daily limits.">
           <TimezoneSelect value={v.timezone} onChange={(tz) => set("timezone", tz)} />
         </Field>
-        <Field label="Maximum call length" hint="Santa wraps up warmly as time runs out.">
-          <Select value={v.maxCallMinutes} onChange={(e) => set("maxCallMinutes", Number(e.target.value))}>
-            {[3, 5, 8, 10, 12, 15, 20, 30].map((n) => (
+        <Field
+          label="Long-call limit"
+          hint="Calls normally wrap up on their own around the length set under Personality. If a call keeps going past this, the elves call Santa away and he says goodbye. Calls never cut off mid-conversation."
+        >
+          <Select value={Math.max(5, v.maxCallMinutes)} onChange={(e) => set("maxCallMinutes", Number(e.target.value))}>
+            {[5, 8, 10, 12, 15, 20, 30].map((n) => (
               <option key={n} value={n}>
                 {n} minutes
               </option>

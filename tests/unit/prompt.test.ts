@@ -129,7 +129,8 @@ describe("buildSantaInstructions", () => {
 
   it("follows a Santa call shape: good-this-year and the wish early, then keeps the conversation going", () => {
     const text = buildSantaInstructions(baseInput());
-    expect(text).toMatch(/busy season at the workshop/);
+    expect(text).toMatch(/set everything aside for this call/);
+    expect(text).toMatch(/Never make an excuse to leave or start saying goodbye on your own/);
     expect(text).toMatch(/have you been good this year/);
     expect(text).toMatch(/by about the one-and-a-half-minute mark/);
     expect(text).toMatch(/what they're hoping for this Christmas/);
@@ -161,7 +162,7 @@ describe("buildSantaInstructions", () => {
     const text = buildSantaInstructions(baseInput());
     expect(text).not.toMatch(/at most \d+ minutes|seconds left/);
     expect(text).toMatch(/only ends with goodbyes/);
-    expect(text).toMatch(/the elves are calling you away/);
+    expect(text).toMatch(/something at the North Pole needs you/);
   });
 
   it("adds reconnect context only when resuming", () => {
@@ -219,8 +220,26 @@ describe("time helpers in prompt", () => {
   });
 
   it("builds the elves-are-calling cue for a long call", () => {
-    expect(elvesNudge()).toMatch(/elves are calling you away/);
-    expect(elvesNudge()).toMatch(/ending with "bye"/);
+    const note = elvesNudge("Mrs. Claus is calling from the kitchen that the cookies are coming out of the oven");
+    expect(note).toMatch(/this call has run long/);
+    expect(note).toMatch(/you have to run because Mrs\. Claus is calling/);
+    expect(note).toMatch(/ending with "bye"/);
+  });
+
+  it("rotates Santa's reasons to run and never repeats the last one", async () => {
+    const { pickRunExcuse, RUN_EXCUSES } = await import("@/lib/santa/prompt");
+    expect(RUN_EXCUSES.length).toBeGreaterThanOrEqual(10);
+    for (const r of [0, 0.3, 0.5, 0.99]) {
+      for (let last = 0; last < RUN_EXCUSES.length; last++) {
+        const next = pickRunExcuse(last, () => r);
+        expect(next).not.toBe(last);
+        expect(next).toBeGreaterThanOrEqual(0);
+        expect(next).toBeLessThan(RUN_EXCUSES.length);
+      }
+    }
+    const seen = new Set(Array.from({ length: 200 }, () => pickRunExcuse(null)));
+    expect(seen.size).toBeGreaterThan(5);
+    expect(RUN_EXCUSES.join(" ")).not.toMatch(/naughty|hurt|injur|sick|accident/i);
   });
 });
 
@@ -285,14 +304,16 @@ describe("call pacing and goodbyes", async () => {
     // Default: wrap up at 4 min, elves at the 10-minute per-call limit, backstop 3 min after that.
     expect(callPacing("MEDIUM", 600)).toEqual({ wrapUpAt: 240, elvesAt: 600, hardStopAt: 780 });
     expect(callPacing("SHORT", 600).wrapUpAt).toBe(180);
-    // A parent's short per-call limit brings the wrap-up earlier.
-    expect(callPacing("LONG", 300, { perCallSeconds: 300 }).wrapUpAt).toBe(240);
+    // A low per-call limit (e.g. 3 minutes) never shortens a normal call.
+    const short = callPacing("MEDIUM", 180);
+    expect(short.wrapUpAt).toBe(240);
+    expect(short.elvesAt).toBe(300);
     // Almost out of weekly minutes: the call still gets its normal length.
-    const low = callPacing("MEDIUM", 110, { perCallSeconds: 600 });
+    const low = callPacing("MEDIUM", 110);
     expect(low.wrapUpAt).toBe(240);
     expect(low.elvesAt).toBe(300);
     // A reconnect continues the same conversation's pacing.
-    expect(callPacing("MEDIUM", 500, { perCallSeconds: 500, alreadyTalkedSeconds: 100 }).wrapUpAt).toBe(140);
+    expect(callPacing("MEDIUM", 500, { alreadyTalkedSeconds: 100 }).wrapUpAt).toBe(140);
   });
   it("recognizes a child's goodbye without false alarms", () => {
     for (const bye of ["Bye Santa!", "okay bye", "Goodbye!", "I gotta go", "see ya", "talk to you later", "good night Santa"]) expect(isGoodbye(bye)).toBe(true);

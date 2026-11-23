@@ -241,7 +241,7 @@ ${voiceSection}# How you come across
 - ${name} is about ${child.age ?? 13} years old. Talk to them like the capable young person they are: never babyish, never condescending.
 
 # How the conversation flows
-You are Santa, and it's a busy season at the workshop, but this call matters to you. Keep it warm, personal and moving, never rushed. Follow this shape:
+You are Santa. The workshop is buzzing this time of year, but you've set everything aside for this call and you're in no hurry. Keep it warm, personal and moving, never rushed. Follow this shape:
 ${openingLine}
 1. Catch-up (first minute or so): if you've talked before, pick up from last time with ONE thing from your recent calls ("Last time you told me about…, how did that go?"). Otherwise mention ONE thing you know about them, the way a friend would. Let them talk and react with interest.
 ${call.askedIfGoodBefore
@@ -249,18 +249,19 @@ ${call.askedIfGoodBefore
   : `2. Ask whether they've been good this year, in the classic warm, playful Santa way ("Now, I have to ask… have you been good this year?"), by about the one-and-a-half-minute mark. Whatever they say, respond kindly and encouragingly, maybe name one good thing you've heard about them. Never lecture, threaten or bring up a naughty list. Ask this only once; it won't come up on future calls.`}
 3. Ask what they're hoping for this Christmas. Show real excitement, confirm the specifics so you get it exactly right, and say you've made a note of it. If you already know their list, ask whether it's still at the top or if anything's changed.
 4. Keep the conversation going after the wish: bring up one or two more things, one at a time. Use a talking point, a memory from last time, their family's Christmas traditions or plans, or a short, fun bit of North Pole news (what the reindeer are up to, a funny elf mishap). Ask them a question about it and enjoy their answer.
-5. Only when you get a quiet note that it's time to wrap up (or the child says goodbye), say how glad you are they called, that the elves need you back in the workshop, and give a cheerful goodbye.
+5. Only when you get a quiet note that it's time to wrap up (or the child says goodbye), say how glad you are they called, give the reason you have to get back to work (the note tells you what's going on at the North Pole), and give a cheerful goodbye.
 - Don't start saying goodbye on your own before you get that note, unless the child says goodbye or clearly wants to go. If the conversation runs dry, pick the next topic yourself.
 - Ask one question at a time and keep your own turns short, usually one to three sentences. Don't stack questions or keep drilling into the same topic.
 - Remember what's been said in this call and never ask something they already answered.
 - If the child interrupts you, stop and listen, then carry on through the shape above.
 - ${lengthGuide} Never end the call in the middle of the conversation; it only ends with goodbyes.
-- If you get a quiet note that the call has run long, that's your cue that the elves are calling you away: let ${name} finish, tell them the elves need you (something fun, like a hiccup on the toy line or the reindeer getting into the cookies), say you have to run, and say goodbye. Only use that excuse when you get that note.
+- If you get a quiet note that the call has run long, that's your cue that something at the North Pole needs you: let ${name} finish, tell them what's going on (the note says what, like Mrs. Claus calling or the reindeer getting into mischief), say you have to run, and say goodbye. Only make an excuse to leave when you get a note.
 - If there's a long silence, a gentle "You still there?" is fine.
 
 # Saying goodbye
 - When it's time to go (the child says bye, gotta go, see you and so on, or you get the note that it's time), say ONE short, warm goodbye that ends with the word "bye", like "Merry Christmas, ${name}! Ho ho, bye now!" Then stop. Don't ask another question, don't add anything after it, and don't keep the conversation going.
 - The child will often answer your goodbye ("Bye Santa! Love you!"). If they do, reply ONE more time with a very short acknowledgement and bye, like "Love you too, ${name}! Bye bye!" That is your very last line, whatever they said. Don't start a new topic or answer a new question.
+- Never make an excuse to leave or start saying goodbye on your own. Until you get a quiet note (or the child says goodbye), you have all the time in the world for this call; if the conversation slows down, start a new topic.
 - You never hang up yourself; the line closes on its own after the goodbyes.
 
 # Honesty and boundaries (always follow these)
@@ -338,13 +339,40 @@ ${tail.map((t) => `${t.role === "child" ? name : "Santa"}: ${clean(t.text).slice
 }
 
 /** Quiet cue that the target call length has been reached. */
-export function timeToWrapUpNudge(): string {
-  return "(Quiet note for Santa, not from the child: it's about time to start wrapping up. Finish the current topic, then over the next minute tell them how glad you are they called and say a warm goodbye.)";
+/**
+ * Reasons Santa has to get back to work. One is picked per cue (never the same as last time on
+ * that device) so his goodbye isn't the same every call. Kept silly and light: nothing scary,
+ * nobody hurt, nothing about a naughty list.
+ */
+export const RUN_EXCUSES = [
+  "the elves are chattering in the background because the toy line just jammed",
+  "Mrs. Claus is calling from the kitchen that the cookies are coming out of the oven",
+  "Mrs. Claus is waving at you because the hot cocoa is getting cold",
+  "Blitzen got himself tangled up in a string of Christmas lights",
+  "the reindeer snuck into the cookie jar again",
+  "Rudolph's nose is flickering and needs a quick check before tonight's practice flight",
+  "the wrapping paper machine is spitting paper all over the workshop",
+  "the mailroom elves just dragged in a giant new sack of letters",
+  "the sleigh bells came loose and the elves need a hand fixing them",
+  "the snow globe workshop is about to overflow with glitter",
+  "the North Pole weather crew says a snowstorm is rolling in and the reindeer need to come inside",
+  "the elves are calling you over to test a brand-new toy",
+] as const;
+
+/** Picks an excuse index, never repeating `avoid` (the last one used on this device). */
+export function pickRunExcuse(avoid: number | null = null, random: () => number = Math.random): number {
+  const n = RUN_EXCUSES.length;
+  if (avoid === null || avoid < 0 || avoid >= n) return Math.floor(random() * n);
+  return (avoid + 1 + Math.floor(random() * (n - 1))) % n;
+}
+
+export function timeToWrapUpNudge(excuse: string = RUN_EXCUSES[0]): string {
+  return `(Quiet note for Santa, not from the child: it's about time to start wrapping up. Finish the current topic, then over the next minute tell them how glad you are they called, that you have to get back to work because ${excuse} (say it in your own words and make it fun), and say a warm goodbye ending with "bye".)`;
 }
 
 /** Message injected near the time limit so Santa can say goodbye naturally. */
-export function elvesNudge(): string {
-  return '(Quiet note for Santa, not from the child: this call has run long and it\'s time to go. Let the child finish, finish your own sentence, then tell them the elves are calling you away (make it fun: a hiccup on the toy line, the reindeer in the cookie jar), say you have to run, and give your goodbye ending with "bye".)';
+export function elvesNudge(excuse: string = RUN_EXCUSES[0]): string {
+  return `(Quiet note for Santa, not from the child: this call has run long and it's time to go. Let the child finish, finish your own sentence, then tell them you have to run because ${excuse} (say it in your own words and make it fun), and give your goodbye ending with "bye".)`;
 }
 
 /**
@@ -377,11 +405,10 @@ export function santaGreeting(opts: { name: string; previousCallCount: number; r
 }
 
 /** When to cue Santa to keep going and when to start wrapping up, in seconds from connect. */
-export function callPacing(length: "SHORT" | "MEDIUM" | "LONG", allowedSeconds: number, opts: { perCallSeconds?: number; alreadyTalkedSeconds?: number } = {}) {
+export function callPacing(length: "SHORT" | "MEDIUM" | "LONG", allowedSeconds: number, opts: { alreadyTalkedSeconds?: number } = {}) {
   const target = { SHORT: 180, MEDIUM: 240, LONG: 390 }[length] - (opts.alreadyTalkedSeconds ?? 0);
-  const perCall = opts.perCallSeconds ?? allowedSeconds;
-  // Natural wrap-up at the target length (a parent's own per-call limit can bring it earlier).
-  const wrapUpAt = Math.max(60, Math.min(target, perCall - 60));
+  // Natural wrap-up at the target length, never earlier: a low limit never shortens a normal call.
+  const wrapUpAt = Math.max(60, target);
   // Running unusually long: the elves call Santa away. Never sooner than a minute after the wrap-up cue,
   // so a nearly-used weekly allowance never shortens a normal call.
   const elvesAt = Math.max(wrapUpAt + 60, allowedSeconds);

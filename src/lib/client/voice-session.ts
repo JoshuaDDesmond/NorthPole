@@ -2,6 +2,7 @@
 
 import { isGoodbye, isSantaGoodbye, elvesNudge, timeToWrapUpNudge } from "../santa/prompt";
 import { GoodbyeFlow } from "./goodbye";
+import { chooseRunExcuse } from "./excuse";
 
 /**
  * VoiceSessionManager
@@ -313,7 +314,7 @@ export class VoiceSessionManager {
     this.timers.push(
       setTimeout(() => {
         this.wrapUpCueSent = true;
-        this.sendSystemNote(timeToWrapUpNudge());
+        this.sendSystemNote(timeToWrapUpNudge(chooseRunExcuse()));
       }, wrapUpAt * 1000),
       setTimeout(() => this.sendElves(), elvesAt * 1000),
       // Last-resort backstop if Santa never says goodbye; even then he finishes his sentence.
@@ -374,7 +375,7 @@ export class VoiceSessionManager {
     if (this.wrapUpSent || this.ended || this.goodbye.active) return;
     this.wrapUpSent = true;
     this.wrapUpCueSent = true;
-    this.sendSystemNote(elvesNudge());
+    this.sendSystemNote(elvesNudge(chooseRunExcuse()));
   }
 
 

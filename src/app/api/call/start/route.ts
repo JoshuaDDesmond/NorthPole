@@ -118,7 +118,6 @@ export const POST = handle(async (req: NextRequest) => {
   // Calls end with goodbyes, not a hard cutoff: Santa wraps up at the target length and, if a call
   // runs unusually long, the elves call him away. The stored limit is only a far-off backstop.
   const pacing = callPacing(ctx.conversationLength, allowed, {
-    perCallSeconds: family.maxCallMinutes * 60 - carriedOver,
     alreadyTalkedSeconds: carriedOver,
   });
 

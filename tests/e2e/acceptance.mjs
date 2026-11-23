@@ -790,15 +790,18 @@ await check("goodbye: if the child doesn't answer Santa's bye, the call hangs up
 });
 await check("no hard cutoff: a long call gets the elves cue and ends only after Santa's goodbye", async () => {
   await parent("/api/parent/settings", { method: "PATCH", body: { maxCallMinutes: 1 } });
+  await parent("/api/parent/personality", { method: "PATCH", body: { conversationLength: "SHORT" } });
   await page.getByRole("button", { name: "Call Santa Again" }).click();
   await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
-  // Per-call limit is 1 minute: wrap-up cue at 60s, elves cue at 120s, nothing ends the call on its own.
-  await sleep(75000);
+  // A 1-minute limit doesn't shorten the call: wrap-up cue at the 3-minute target, elves a minute later.
+  const cue = (text) => peer.evaluate((t) => window.__events.some((e) => JSON.stringify(e).includes(t)), text);
+  await sleep(170000);
   assert((await page.getByText("Call ended").count()) === 0, "call was cut off at the limit");
-  const wrap = await peer.evaluate(() => window.__events.some((e) => JSON.stringify(e).includes("start wrapping up")));
-  assert(wrap, "wrap-up cue not sent");
-  await sleep(50000);
-  const elves = await peer.evaluate(() => window.__events.some((e) => JSON.stringify(e).includes("elves are calling you away")));
+  assert(!(await cue("start wrapping up")), "wrap-up cue came before the target length");
+  await sleep(15000);
+  assert(await cue("start wrapping up"), "wrap-up cue not sent");
+  await sleep(60000);
+  const elves = await cue("this call has run long");
   assert(elves, "elves cue not sent");
   assert((await page.getByText("Call ended").count()) === 0, "call was cut off after the elves cue");
   await peer.evaluate(() => {
@@ -812,6 +815,7 @@ await check("no hard cutoff: a long call gets the elves cue and ends only after 
   const row = (await db.query(`SELECT status, "endReason" FROM "Call" ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
   assert(row.status === "COMPLETED" && row.endReason === "goodbye", `${row.status} ${row.endReason}`);
   await parent("/api/parent/settings", { method: "PATCH", body: { maxCallMinutes: 10 } });
+  await parent("/api/parent/personality", { method: "PATCH", body: { conversationLength: "MEDIUM" } });
 });
 await check("connection failure shows an honest error instead of a fake connection", async () => {
   const savedPeer = mock.peerPage;
