@@ -46,6 +46,18 @@ describe("keeping calls fresh", () => {
     expect(first).toMatch(/have you been good this year\?/);
   });
 
+  it("a personal opener asks about one specific thing the family filled in, never a guess", () => {
+    const base = input(3, { opener: CALL_OPENERS.indexOf("PERSONAL"), extras: [0], wishCheckIn: false, pick: 0 });
+    base.child = { ...base.child, sportsAndTeams: "", pets: "A golden retriever named Moose" };
+    const text = buildSantaInstructions(base);
+    expect(text).toMatch(/Ask about this, something the family told you: "Pets: A golden retriever named Moose"/);
+    expect(text).not.toMatch(/a team or sport/);
+    const empty = input(3, { opener: CALL_OPENERS.indexOf("PERSONAL"), extras: [0], wishCheckIn: false, pick: 0.5 });
+    empty.child = { ...empty.child, sportsAndTeams: "" };
+    expect(buildSantaInstructions(empty)).toContain(CALL_OPENERS[5]);
+    expect(buildSantaInstructions(empty)).not.toContain("PERSONAL");
+  });
+
   it("varies the hello on repeat calls", () => {
     const hellos = new Set(Array.from({ length: 8 }, (_, i) => santaGreeting({ name: "Ronan", previousCallCount: 3, resuming: false, random: () => i / 8 })));
     expect(hellos.size).toBe(8);

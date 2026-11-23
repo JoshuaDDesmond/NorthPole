@@ -102,15 +102,18 @@ export type BuildInput = {
 
 /* ------------------------------ Keeping calls fresh ------------------------------ */
 
-/** Different ways to open a repeat call. A different one is picked each call. */
+/**
+ * Different ways to open a repeat call. A different one is picked each call. "PERSONAL" opens with
+ * one specific thing the family filled in (profile, household notes or memories), chosen per call.
+ */
 export const CALL_OPENERS = [
   "Follow up on ONE specific thing from your most recent call and ask how it turned out.",
   "Share a quick, funny bit of North Pole news from today (an elf mishap, a reindeer antic, a toy test gone wrong) and ask what they make of it.",
-  "Ask about something specific going on in their life right now (school, a team or sport, a hobby, a friend), using what you know. Leave Christmas for later.",
+  "PERSONAL",
   "Ask for their help with a North Pole problem: Mrs. Claus can't pick a new cookie flavor, the elves need a name for a new reindeer calf, or a toy design has the elves stumped. Take their idea seriously and run with it.",
   "Ask what's been happening at home this week, including any mischief from their scout elf if they have one.",
   "Ask what the best part of their week has been, then get curious about it.",
-  "Bring up one specific thing you know they've been doing or working on, and ask how it's going.",
+  "Tell them something funny Mrs. Claus said or did today, and ask what they'd have done.",
   "Ask what they're most looking forward to this Christmas, a plan or family tradition, and get into the details.",
 ] as const;
 
@@ -125,7 +128,28 @@ export const CALL_EXTRAS = [
   "a funny bit about the reindeer (who's the fastest, who snores, who's been sneaking cookies)",
 ] as const;
 
-export type CallPlan = { opener: number; extras: number[]; wishCheckIn: boolean };
+export type CallPlan = { opener: number; extras: number[]; wishCheckIn: boolean; /** 0..1, picks which known detail a PERSONAL opener uses. */ pick?: number };
+
+/** Details the family filled in that are good conversation starters (not names, ages or wishes). */
+function personalTopics(child: ChildInput, memories: MemoryInput[], household: string[]): string[] {
+  const fields: [string, string][] = [
+    ["Pets", child.pets],
+    ["School", child.school],
+    ["Sports and teams", child.sportsAndTeams],
+    ["Hobbies and interests", child.hobbies],
+    ["Favorite activities", child.favoriteActivities],
+    ["Recent accomplishments", child.accomplishments],
+    ["Challenges or goals", child.challengesAndGoals],
+    ["Family holiday traditions", child.traditions],
+    ["Other details", child.otherDetails],
+    ...child.customFields.map((f) => [f.label, f.value] as [string, string]),
+  ];
+  return [
+    ...fields.filter(([, v]) => clean(v)).map(([k, v]) => `${clean(k)}: ${clean(v)}`),
+    ...memories.map((m) => clean(m.content)).filter(Boolean),
+    ...household.map((h) => clean(h).slice(0, 300)).filter(Boolean),
+  ];
+}
 
 /** Picks a fresh plan for a repeat call, never opening the same way as last time. */
 export function planCall(opts: { avoidOpener?: number | null; random?: () => number } = {}): CallPlan {
@@ -137,7 +161,7 @@ export function planCall(opts: { avoidOpener?: number | null; random?: () => num
   const extras = random() < 0.5 ? [first] : [first, (first + 1 + Math.floor(random() * (CALL_EXTRAS.length - 1))) % CALL_EXTRAS.length];
   // The wish list comes up on some calls, not every one.
   const wishCheckIn = random() < 0.35;
-  return { opener, extras, wishCheckIn };
+  return { opener, extras, wishCheckIn, pick: random() };
 }
 
 export function encodePlan(plan: CallPlan): string {
@@ -279,16 +303,27 @@ export function buildSantaInstructions(input: BuildInput): string {
 
   // Repeat callers get a fresh plan each call so calls don't follow the same pattern.
   const repeatPlan = call.previousCallCount > 0 && !call.resumeTranscript?.length ? (call.plan ?? planCall()) : null;
+  // A PERSONAL opener names one specific thing the family told you; without any, use a general opener.
+  const topics = personalTopics(child, memories, input.householdNotes ?? []);
+  const openerText = (() => {
+    if (!repeatPlan) return "";
+    const text = CALL_OPENERS[repeatPlan.opener] ?? CALL_OPENERS[0];
+    if (text !== "PERSONAL") return text;
+    if (!topics.length) return CALL_OPENERS[5];
+    const topic = topics[Math.min(topics.length - 1, Math.floor((repeatPlan.pick ?? 0) * topics.length))];
+    return `Ask about this, something the family told you: "${topic}". Be specific and curious about it, and leave Christmas for later. Don't ask about activities or interests you haven't been told about.`;
+  })();
   const wishPrompted = !repeatPlan || repeatPlan.wishCheckIn;
   const repeatFlow = repeatPlan
     ? `Every call with ${name} should feel different: a real conversation between two people who know each other, not a routine. Don't follow the same pattern as your recent calls, and don't repeat questions, jokes or stories from them.
 ${openingLine}
 This call's plan. It's a loose guide, not a script; if ${name} wants to talk about something else, follow them.
-- Open: ${CALL_OPENERS[repeatPlan.opener] ?? CALL_OPENERS[0]}
+- Open: ${openerText}
 - Somewhere along the way: ${repeatPlan.extras.map((i) => CALL_EXTRAS[i] ?? "").filter(Boolean).join("; and ")}.
 - ${repeatPlan.wishCheckIn ? "At some point, check in on their Christmas wish list." : "No need to go over the wish list this time unless they bring it up."}
 ${call.askedIfGoodBefore ? `- Don't ask whether they've been good; you already did on an earlier call. If it comes up, just say you've been hearing great things.` : `- At a natural moment, ask whether they've been good this year, in a warm, playful way. Respond kindly whatever they say. Never lecture or bring up a naughty list. Ask only once.`}
 - Ask one question at a time and react to their answers like a real person: laugh, share a little of your own day, follow the interesting threads.
+- When you ask about their life, stick to what the family told you (above and below) or what ${name} brings up. Don't guess at sports, hobbies or activities you haven't been told about.
 - Only when you get a quiet note that it's time to wrap up (or the child says goodbye), say how glad you are they called, give the reason you have to get back to work (the note tells you what's going on at the North Pole), and give a cheerful goodbye.`
     : "";
 
