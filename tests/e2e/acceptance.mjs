@@ -724,6 +724,25 @@ await check("a slow reply shows a North Pole weather note, and Santa speaking cl
   await page.getByRole("button", { name: "End Call" }).click();
   await page.getByText("Call ended").waitFor({ timeout: 8000 });
 });
+await check("a mid-call \"see you\" or \"bye\" that isn't a real goodbye doesn't end the call", async () => {
+  await page.getByRole("button", { name: "Call Santa Again" }).click();
+  await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
+  await sleep(16000);
+  await peer.evaluate(() => {
+    window.__dc.send(JSON.stringify({ type: "conversation.item.input_audio_transcription.completed", transcript: "I said bye to my dog" }));
+    window.__dc.send(JSON.stringify({ type: "response.created" }));
+    window.__dc.send(JSON.stringify({ type: "output_audio_buffer.started" }));
+    window.__dc.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "Ho ho! What's your dog's name? I bet the reindeer would love to meet them." }));
+    window.__dc.send(JSON.stringify({ type: "response.done" }));
+    window.__dc.send(JSON.stringify({ type: "output_audio_buffer.stopped" }));
+  });
+  await sleep(14000); // past the 5s pause and the 12s safety net
+  assert((await page.getByText("Call ended").count()) === 0, "call ended on a false goodbye");
+  await page.getByRole("button", { name: "End Call" }).click();
+  await page.getByText("Call ended").waitFor({ timeout: 8000 });
+  const row = (await db.query(`SELECT "endReason" FROM "Call" ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
+  assert(row.endReason === "user_hangup", `endReason ${row.endReason}`);
+});
 await check("goodbye: the child can answer once, Santa says one last bye, then the call hangs up", async () => {
   await page.getByRole("button", { name: "Call Santa Again" }).click();
   await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
@@ -752,8 +771,8 @@ await check("goodbye: the child can answer once, Santa says one last bye, then t
     window.__dc.send(JSON.stringify({ type: "output_audio_buffer.stopped" }));
   });
   await page.getByText("Call ended").waitFor({ timeout: 3000 });
-  const row = (await db.query(`SELECT status FROM "Call" ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
-  assert(row.status === "COMPLETED", `status ${row.status}`);
+  const row = (await db.query(`SELECT status, "endReason" FROM "Call" ORDER BY "startedAt" DESC LIMIT 1`)).rows[0];
+  assert(row.status === "COMPLETED" && row.endReason === "goodbye", `status ${row.status} ${row.endReason}`);
 });
 await check("goodbye: if the child doesn't answer Santa's bye, the call hangs up on its own", async () => {
   await page.getByRole("button", { name: "Call Santa Again" }).click();
@@ -763,6 +782,7 @@ await check("goodbye: if the child doesn't answer Santa's bye, the call hangs up
     window.__dc.send(JSON.stringify({ type: "conversation.item.input_audio_transcription.completed", transcript: "I gotta go, bye!" }));
     window.__dc.send(JSON.stringify({ type: "response.created" }));
     window.__dc.send(JSON.stringify({ type: "output_audio_buffer.started" }));
+    window.__dc.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "Okay, Merry Christmas! Bye now!" }));
     window.__dc.send(JSON.stringify({ type: "response.done" }));
     window.__dc.send(JSON.stringify({ type: "output_audio_buffer.stopped" }));
   });

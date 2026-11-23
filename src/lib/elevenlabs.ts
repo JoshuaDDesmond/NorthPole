@@ -62,7 +62,7 @@ export async function getConversationToken(agentId: string, participantName: str
 }
 
 /** Bump when agentConfig changes; existing agents are updated automatically before the next call. */
-export const AGENT_CONFIG_VERSION = 3;
+export const AGENT_CONFIG_VERSION = 4;
 
 /** Short listener sounds that should never make Santa stop mid-sentence. */
 const BACKCHANNEL_TERMS = ["uh huh", "uh-huh", "mhm", "mm hmm", "mm-hmm", "hmm", "mm", "yeah", "yep", "yes", "okay", "ok", "oh", "ah", "wow", "cool", "nice", "haha", "ha", "right", "sure"];
@@ -82,16 +82,8 @@ export function agentConfig(opts: { voiceId: string | null; llm: string; maxCall
         prompt: {
           prompt: "You are Santa Claus on a warm, private phone call. Keep it kind, age-appropriate and never promise gifts.",
           llm: opts.llm,
-          // Lets Santa hang up himself once goodbyes are said.
-          built_in_tools: {
-            end_call: {
-              type: "system",
-              name: "end_call",
-              description:
-                "End the phone call. Use it only for your very last line: after you have said goodbye AND the child has answered your goodbye, give one short acknowledgement and bye, then end the call. Never use it with your first goodbye, and never in the middle of the conversation.",
-              params: { system_tool_type: "end_call" },
-            },
-          },
+          // No hang-up tool: the model could fire it mid-call. The app ends the call after goodbyes.
+          built_in_tools: { end_call: null },
         },
         // Background noise can't cut off Santa's opening hello.
         disable_first_message_interruptions: true,

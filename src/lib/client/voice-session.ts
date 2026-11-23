@@ -35,7 +35,7 @@ export type EndInfo = {
   dropped: boolean;
 };
 
-export type EndReason = "user_hangup" | "time_limit" | "connection_lost" | "error" | "page_closed" | "cancelled" | "server_stop";
+export type EndReason = "user_hangup" | "goodbye" | "santa_hangup" | "time_limit" | "connection_lost" | "error" | "page_closed" | "cancelled" | "server_stop";
 
 export type VoiceSessionEvents = {
   onPhase?: (phase: CallPhase) => void;
@@ -101,7 +101,9 @@ export class VoiceSessionManager {
   private responding = false;
   private pacing: { keepGoingAt: number | null; wrapUpAt: number } | null = null;
   /** Santa's goodbye, one answer from the child, Santa's last word, then hang up. */
-  private goodbye = new GoodbyeFlow(() => void this.end("user_hangup"));
+  private goodbye = new GoodbyeFlow(() => void this.end("goodbye"));
+  /** Santa may only start the goodbyes himself once he's been told it's time. */
+  private wrapUpCueSent = false;
 
   constructor(
     private readonly childId: string,
@@ -310,7 +312,10 @@ export class VoiceSessionManager {
     // Quiet pacing cues: the model has no clock, so the app tells Santa when to keep going and when to wrap up.
     if (this.pacing?.keepGoingAt) this.timers.push(setTimeout(() => this.sendSystemNote(keepGoingNudge()), this.pacing.keepGoingAt * 1000));
     if (this.pacing && this.pacing.wrapUpAt < this.maxSeconds - WRAP_UP_LEAD_SECONDS) {
-      this.timers.push(setTimeout(() => this.sendSystemNote(timeToWrapUpNudge()), this.pacing.wrapUpAt * 1000));
+      this.timers.push(setTimeout(() => {
+        this.wrapUpCueSent = true;
+        this.sendSystemNote(timeToWrapUpNudge());
+      }, this.pacing.wrapUpAt * 1000));
     }
     this.intervals.push(
       setInterval(() => {
@@ -352,6 +357,7 @@ export class VoiceSessionManager {
   private sendWrapUp(secondsLeft: number) {
     if (this.wrapUpSent || this.ended) return;
     this.wrapUpSent = true;
+    this.wrapUpCueSent = true;
     this.send({
       type: "conversation.item.create",
       item: { type: "message", role: "system", content: [{ type: "input_text", text: wrapUpNudge(secondsLeft) }] },
@@ -394,8 +400,11 @@ export class VoiceSessionManager {
         if (ev.transcript && isGoodbye(ev.transcript)) this.beginClosing();
         break;
       case "response.output_audio_transcript.done":
-        if (ev.transcript?.trim()) this.pushTurn("santa", ev.transcript);
-        if (ev.transcript && isSantaGoodbye(ev.transcript) && this.elapsedSeconds >= 45) this.beginClosing();
+        if (ev.transcript?.trim()) {
+          this.pushTurn("santa", ev.transcript);
+          if (this.wrapUpCueSent && isSantaGoodbye(ev.transcript)) this.beginClosing();
+          this.goodbye.santaLine(ev.transcript);
+        }
         break;
       case "error":
         // Non-fatal protocol errors (e.g. cancelling an already-finished response). Log the code only.

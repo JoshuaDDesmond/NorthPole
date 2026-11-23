@@ -41,6 +41,20 @@ const FAIL_REASONS: Record<string, string> = {
   error: "Connection error",
 };
 
+/** Why a finished call ended, so an early cut-off is easy to explain. */
+const END_REASONS: Record<string, string> = {
+  goodbye: "Ended after goodbyes",
+  user_hangup: "Hung up from the call screen",
+  santa_hangup: "Voice service ended the call",
+  time_limit: "Time limit reached",
+  server_time_limit: "Time limit reached",
+  connection_lost: "Line dropped",
+  superseded: "Replaced by a newer call",
+  page_closed: "Call page was closed",
+  server_stop: "Stopped by the server",
+  calling_disabled: "Line paused by a parent",
+};
+
 function CallRow({ c, timezone }: { c: CallView; timezone: string }) {
   const router = useRouter();
   const toast = useToast();
@@ -86,6 +100,7 @@ function CallRow({ c, timezone }: { c: CallView; timezone: string }) {
         <span className="text-sm tabular-nums text-mist">{formatDuration(c.durationSec)}</span>
         <Badge tone={status.tone}>{status.label}</Badge>
         {c.status === "FAILED" && c.endReason && FAIL_REASONS[c.endReason] && <span className="text-xs text-mist">{FAIL_REASONS[c.endReason]}</span>}
+        {c.status !== "FAILED" && c.endReason && END_REASONS[c.endReason] && <span className="text-xs text-mist">{END_REASONS[c.endReason]}</span>}
         <div className="ml-auto flex items-center gap-1">
           {c.summary && !editing && (
             <Button size="sm" variant="ghost" onClick={() => setEditing(true)} aria-label="Edit summary">

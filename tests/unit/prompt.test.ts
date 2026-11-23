@@ -287,17 +287,19 @@ describe("call pacing and goodbyes", async () => {
   });
   it("recognizes a child's goodbye without false alarms", () => {
     for (const bye of ["Bye Santa!", "okay bye", "Goodbye!", "I gotta go", "see ya", "talk to you later", "good night Santa"]) expect(isGoodbye(bye)).toBe(true);
-    for (const not of ["Merry Christmas Santa!", "I want a new hockey stick", "yes I've been good", "my friend moved away last summer and we said goodbye at the airport which was sad"]) {
+    for (const not of ["Merry Christmas Santa!", "I want a new hockey stick", "yes I've been good", "my friend moved away last summer and we said goodbye at the airport which was sad", "Will I see you on Christmas?", "I have to go to bed at eight", "do you need to go feed the reindeer"]) {
       expect(isGoodbye(not)).toBe(false);
     }
   });
   it("tells Santa to keep going early and wrap up later, and to stop after the goodbye", () => {
-    expect(keepGoingNudge()).toMatch(/Don't start saying goodbye yet/);
+    expect(keepGoingNudge()).toMatch(/keep the conversation going/);
+    expect(keepGoingNudge()).not.toMatch(/goodbye|hang/i);
     expect(timeToWrapUpNudge()).toMatch(/start wrapping up/);
     const text = buildSantaInstructions(baseInput());
     expect(text).toMatch(/say ONE short, warm goodbye that ends with the word "bye"/);
     expect(text).toMatch(/reply ONE more time with a very short acknowledgement and bye/);
-    expect(text).toMatch(/Never use it with your first goodbye/);
+    expect(text).toMatch(/You never hang up yourself/);
+    expect(text).not.toMatch(/end_call/);
     expect(text).toMatch(/Don't start saying goodbye on your own before you get that note/);
   });
 });

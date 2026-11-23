@@ -8,7 +8,11 @@
  *   done     -> hang up as soon as that line finishes
  *
  * The child gets exactly one chance to answer; anything after Santa's last line hangs up.
+ * If Santa's reply to a "goodbye" isn't a goodbye (the child said "see you" mid-chat),
+ * the flow cancels and the call carries on.
  */
+import { isSantaGoodbye } from "../santa/prompt";
+
 export type GoodbyeState = "idle" | "closing" | "lastWord" | "final" | "done";
 
 export const GOODBYE_TIMING = {
@@ -23,6 +27,8 @@ export const GOODBYE_TIMING = {
 export class GoodbyeFlow {
   private _state: GoodbyeState = "idle";
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** Santa's most recent line since goodbyes started (null = none yet). */
+  private santaLineSinceBegin: string | null = null;
 
   constructor(
     private readonly hangUp: () => void,
@@ -41,7 +47,17 @@ export class GoodbyeFlow {
   begin() {
     if (this._state !== "idle") return;
     this._state = "closing";
-    this.arm(this.timing.fallbackMs);
+    this.santaLineSinceBegin = null;
+    this.arm(this.timing.fallbackMs, () => {
+      // Safety net only applies to a real goodbye (or a Santa who went silent after the child's bye).
+      const line = this.santaLineSinceBegin;
+      return line === null || isSantaGoodbye(line);
+    });
+  }
+
+  /** The words of Santa's latest line (transcript). */
+  santaLine(text: string) {
+    if (this._state !== "idle") this.santaLineSinceBegin = text;
   }
 
   /** Santa started speaking. */
@@ -55,6 +71,14 @@ export class GoodbyeFlow {
   /** Santa stopped speaking (finished, or the child talked over him). */
   santaFinished() {
     if (this._state === "closing") {
+      // Nothing new from Santa yet (e.g. he was cut off mid-sentence): wait for his reply.
+      if (this.santaLineSinceBegin === null) return;
+      if (!isSantaGoodbye(this.santaLineSinceBegin)) {
+        // False alarm: he kept chatting, so the call carries on.
+        this.dispose();
+        this._state = "idle";
+        return;
+      }
       this._state = "lastWord";
       this.arm(this.timing.lastWordMs);
     } else if (this._state === "final") {
@@ -73,10 +97,14 @@ export class GoodbyeFlow {
     this.timer = null;
   }
 
-  private arm(ms: number) {
+  private arm(ms: number, shouldHangUp: () => boolean = () => true) {
     this.dispose();
     this.timer = setTimeout(() => {
       this.timer = null;
+      if (!shouldHangUp()) {
+        this._state = "idle";
+        return;
+      }
       this._state = "done";
       this.hangUp();
     }, ms);

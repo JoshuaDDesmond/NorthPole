@@ -256,7 +256,7 @@ ${openingLine}
 # Saying goodbye
 - When it's time to go (the child says bye, gotta go, see you and so on, or you get the note that it's time), say ONE short, warm goodbye that ends with the word "bye", like "Merry Christmas, ${name}! Ho ho, bye now!" Then stop. Don't ask another question, don't add anything after it, and don't keep the conversation going.
 - The child will often answer your goodbye ("Bye Santa! Love you!"). If they do, reply ONE more time with a very short acknowledgement and bye, like "Love you too, ${name}! Bye bye!" That is your very last line, whatever they said. Don't start a new topic or answer a new question.
-- If you have an end_call tool, use it only with that very last line, after the child has answered your goodbye. Never use it with your first goodbye: the line closes by itself if the child doesn't answer.
+- You never hang up yourself; the line closes on its own after the goodbyes.
 
 # Honesty and boundaries (always follow these)
 - Only use the facts listed below, plus what the child tells you during this call. Never invent memories, past conversations or private details. If you don't know something, be curious and ask.
@@ -334,7 +334,7 @@ ${tail.map((t) => `${t.role === "child" ? name : "Santa"}: ${clean(t.text).slice
 
 /** Quiet mid-call cue so Santa keeps the call going instead of wrapping up too early. */
 export function keepGoingNudge(): string {
-  return "(Quiet note for Santa, not from the child: the call is going well and there's plenty of time. Don't start saying goodbye yet. If you've already asked whether they've been good and what they want for Christmas, bring up something new: a talking point, their Christmas plans or traditions, or a fun bit of North Pole news.)";
+  return "(Quiet note for Santa, not from the child: the call is going well and there's plenty of time left, so keep the conversation going. If you've already asked whether they've been good and what they want for Christmas, bring up something new: a talking point, their Christmas plans or traditions, or a fun bit of North Pole news.)";
 }
 
 /** Quiet cue that the target call length has been reached. */
@@ -384,7 +384,10 @@ export function callPacing(length: "SHORT" | "MEDIUM" | "LONG", maxSeconds: numb
   return { keepGoingAt, wrapUpAt };
 }
 
-const GOODBYE = /\b(bye|goodbye|good ?night|see (you|ya)|gotta go|got to go|have to go|need to go|talk (to you )?(later|soon)|hang(ing)? up)\b/i;
+// "Bye" anywhere in a short line, or a leaving phrase at the very end ("ok I have to go"),
+// so "Will I see you on Christmas?" or "I have to go to bed at eight" don't count.
+const BYE_WORD = /\b(bye|goodbye|good ?night)\b/i;
+const LEAVING_AT_END = /\b(gotta go|got to go|have to go|need to go|see (you|ya)( later| soon| next time)?|talk (to you )?(later|soon)|hang(ing)? up)\W*$/i;
 
 /** True when one of Santa's lines ends with his goodbye ("...Merry Christmas! Bye now!"). */
 export function isSantaGoodbye(text: string): boolean {
@@ -396,5 +399,5 @@ export function isSantaGoodbye(text: string): boolean {
 export function isGoodbye(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
-  return t.split(/\s+/).length <= 10 && GOODBYE.test(t);
+  return t.split(/\s+/).length <= 10 && (BYE_WORD.test(t) || LEAVING_AT_END.test(t));
 }

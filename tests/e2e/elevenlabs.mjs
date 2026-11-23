@@ -198,7 +198,7 @@ await check("Connect ElevenLabs creates a private agent with per-call overrides 
   assert(o.agent.prompt.prompt && o.agent.first_message && o.tts.voice_id && o.agent.prompt.llm, "overrides not enabled");
   assert(cfg.conversation_config.tts.voice_id === DEFAULT_VOICE, "default voice not applied");
   assert(cfg.conversation_config.conversation.client_events.includes("user_transcript"), "transcripts not enabled");
-  assert(cfg.conversation_config.agent.prompt.built_in_tools.end_call.params.system_tool_type === "end_call", "end_call tool missing");
+  assert(cfg.conversation_config.agent.prompt.built_in_tools.end_call === null, "Santa must not be able to hang up on his own");
   assert(cfg.conversation_config.turn.interruption_ignore_terms.includes("uh huh") && cfg.conversation_config.turn.merge_with_default_ignore_terms === true, "backchannel ignore terms missing");
   assert(cfg.conversation_config.agent.disable_first_message_interruptions === true, "first message should not be interruptible");
   const again = await owner("/api/parent/elevenlabs/connect", { method: "POST" });

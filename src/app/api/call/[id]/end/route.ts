@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
 
 const STATUS_FOR_REASON: Record<string, CallStatus> = {
   user_hangup: "COMPLETED",
+  goodbye: "COMPLETED",
+  santa_hangup: "COMPLETED",
   page_closed: "COMPLETED",
   time_limit: "LIMIT_REACHED",
   connection_lost: "DISCONNECTED",

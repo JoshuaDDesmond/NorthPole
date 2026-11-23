@@ -49,7 +49,9 @@ export class ElevenLabsSession {
   private volume = 1;
   private pacing: { keepGoingAt: number | null; wrapUpAt: number } | null = null;
   /** Santa's goodbye, one answer from the child, Santa's last word, then hang up. */
-  private goodbye = new GoodbyeFlow(() => void this.end("user_hangup"));
+  private goodbye = new GoodbyeFlow(() => void this.end("goodbye"));
+  /** Santa may only start the goodbyes himself once he's been told it's time. */
+  private wrapUpCueSent = false;
 
   constructor(
     private readonly childId: string,
@@ -139,7 +141,8 @@ export class ElevenLabsSession {
           }
           if (role === "agent" || role === "ai") {
             this.pushTurn("santa", text);
-            if (isSantaGoodbye(text) && this.elapsedSeconds >= 45) this.beginClosing();
+            if (this.wrapUpCueSent && isSantaGoodbye(text)) this.beginClosing();
+            this.goodbye.santaLine(text);
           }
         },
         onModeChange: ({ mode }) => {
@@ -178,8 +181,9 @@ export class ElevenLabsSession {
 
   private onDisconnect(details: { reason: string }) {
     if (this.ended) return;
-    // "agent" means the agent ended the call (e.g. its own time cap); "error" is a dropped line.
-    void this.end(details.reason === "error" && this.connectedAt ? "connection_lost" : "user_hangup", { skipSessionEnd: true });
+    // "agent": ElevenLabs ended the conversation on its side; "error": a dropped line.
+    const reason = details.reason === "error" && this.connectedAt ? "connection_lost" : details.reason === "agent" ? "santa_hangup" : "user_hangup";
+    void this.end(reason, { skipSessionEnd: true });
   }
 
   private startTimers() {
@@ -190,7 +194,10 @@ export class ElevenLabsSession {
     // Quiet pacing cues: the model has no clock, so the app tells Santa when to keep going and when to wrap up.
     if (this.pacing?.keepGoingAt) this.timers.push(setTimeout(() => this.sendNote(keepGoingNudge()), this.pacing.keepGoingAt * 1000));
     if (this.pacing && this.pacing.wrapUpAt < this.maxSeconds - WRAP_UP_LEAD_SECONDS) {
-      this.timers.push(setTimeout(() => this.sendNote(timeToWrapUpNudge()), this.pacing.wrapUpAt * 1000));
+      this.timers.push(setTimeout(() => {
+          this.wrapUpCueSent = true;
+          this.sendNote(timeToWrapUpNudge());
+        }, this.pacing.wrapUpAt * 1000));
     }
     this.intervals.push(
       setInterval(() => this.events.onRemaining?.(Math.max(0, this.maxSeconds - this.elapsedSeconds)), 1000),
@@ -236,6 +243,7 @@ export class ElevenLabsSession {
   private sendWrapUp(secondsLeft: number) {
     if (this.wrapUpSent || this.ended || !this.conversation) return;
     this.wrapUpSent = true;
+    this.wrapUpCueSent = true;
     this.conversation.sendContextualUpdate(wrapUpNudge(secondsLeft));
   }
 
