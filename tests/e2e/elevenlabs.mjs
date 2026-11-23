@@ -295,6 +295,18 @@ await check("Santa asks \"have you been good\" on the first real call only", asy
   await kid(`/api/call/${r.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
 });
 
+await check("household notes reach Santa on that household's kids' calls, never another household's", async () => {
+  const a = await owner("/api/parent/me", { method: "PATCH", body: { householdNotes: "Our scout elf is named Scout. He hides in the tree." } });
+  assert(a.status === 200 && a.json.me.householdNotes.includes("Scout"), `save ${a.status} ${a.text}`);
+  await other("/api/parent/me", { method: "PATCH", body: { householdNotes: "OTHER-HOUSEHOLD elf is Twinkle." } });
+  const r = await kid("/api/call/start", { method: "POST", body: { childId } });
+  assert(r.status === 200, `start ${r.status}`);
+  const prompt = r.json.overrides.agent.prompt.prompt;
+  assert(prompt.includes("Our scout elf is named Scout") && prompt.includes("# Scout elves"), "household notes missing");
+  assert(!prompt.includes("OTHER-HOUSEHOLD"), "another household's notes leaked");
+  await kid(`/api/call/${r.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+});
+
 await check("owner sees live plan usage and call minutes; other parents can't", async () => {
   const r = await owner("/api/parent/usage");
   const sub = r.json.subscription;

@@ -1,6 +1,7 @@
 import { ArrowRight, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { HouseholdNotes } from "@/components/parent/HouseholdNotes";
 import { requireParentPage } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { childWhere } from "@/lib/parent-data";
@@ -21,6 +22,13 @@ export default async function ChildrenPage() {
     },
   });
 
+  // Household notes apply to the children this parent explicitly manages (what their device code shows).
+  const me = await db.parentUser.findUnique({
+    where: { id: parent.userId },
+    select: { householdNotes: true, children: { select: { child: { select: { firstName: true, nickname: true } } } } },
+  });
+  const householdKids = (me?.children ?? []).map((a) => a.child.nickname || a.child.firstName);
+
   return (
     <div>
       <PageHeader
@@ -36,6 +44,7 @@ export default async function ChildrenPage() {
           </Link>
         }
       />
+      <HouseholdNotes initial={me?.householdNotes ?? ""} childNames={householdKids} />
       {children.length === 0 ? (
         <Card>
           <EmptyState

@@ -119,6 +119,8 @@ model ParentUser {
   accessCodeHash     String?
   accessVersion      Int             @default(1)
   consentAt          DateTime?
+  /// Facts Santa should know on calls from every child this parent manages (e.g. "Our scout elf is named Scout").
+  householdNotes     String          @default("")
   createdAt          DateTime        @default(now())
   lastLoginAt        DateTime?
   sessions           ParentSession[]

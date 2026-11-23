@@ -15,9 +15,10 @@ export const PATCH = handle(async (req: NextRequest) => {
     where: { id: parent.userId },
     data: {
       ...(body.name ? { name: body.name } : {}),
+      ...(body.householdNotes !== undefined ? { householdNotes: body.householdNotes } : {}),
       ...(body.consent === true ? { consentAt: new Date() } : body.consent === false ? { consentAt: null } : {}),
     },
-    select: { id: true, name: true, consentAt: true },
+    select: { id: true, name: true, consentAt: true, householdNotes: true },
   });
   return json({ me });
 });

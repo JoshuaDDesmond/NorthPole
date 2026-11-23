@@ -205,11 +205,20 @@ describe("selection helpers", () => {
     expect(points.map((p) => p.id)).toEqual(["high", "normal-fresh", "normal-recent", "low"]);
   });
 
-  it("caps and rotates memories, preferring ones not recently referenced", () => {
-    const many = Array.from({ length: 15 }, (_, i) => mem({ id: `m${i}`, lastReferencedAt: i < 5 ? new Date("2026-12-09") : null }));
-    const chosen = selectMemories(many);
-    expect(chosen).toHaveLength(MAX_MEMORIES);
-    expect(chosen.slice(0, 10).every((m) => m.lastReferencedAt === null)).toBe(true);
+  it("gives Santa every approved memory, including ones he mentioned recently, up to a generous cap", () => {
+    const some = Array.from({ length: 15 }, (_, i) => mem({ id: `m${i}`, lastReferencedAt: i < 5 ? new Date("2026-12-09") : null }));
+    expect(selectMemories(some)).toHaveLength(15);
+    expect(MAX_MEMORIES).toBeGreaterThanOrEqual(50);
+    const lots = Array.from({ length: MAX_MEMORIES + 5 }, (_, i) => mem({ id: `x${i}` }));
+    expect(selectMemories(lots)).toHaveLength(MAX_MEMORIES);
+  });
+
+  it("knows the household's shared facts and what a scout elf is", () => {
+    const text = buildSantaInstructions({ ...baseInput(), householdNotes: ["Our scout elf is named Scout. He hides in the tree."] });
+    expect(text).toMatch(/household \(authoritative\)/);
+    expect(text).toMatch(/Our scout elf is named Scout/);
+    expect(text).toMatch(/# Scout elves/);
+    expect(buildSantaInstructions(baseInput())).not.toMatch(/household \(authoritative\)/);
   });
 });
 

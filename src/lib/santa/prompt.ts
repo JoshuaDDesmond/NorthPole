@@ -93,11 +93,13 @@ export type BuildInput = {
   memories: MemoryInput[];
   /** Optional so older callers keep working. Links, notes and purchase status are never passed in. */
   wishes?: WishInput[];
+  /** Shared facts about the child's household from the parents who manage them (scout elf, pets, traditions). */
+  householdNotes?: string[];
   call: CallContextInput;
 };
 
 export const MAX_TALKING_POINTS = 6;
-export const MAX_MEMORIES = 10;
+export const MAX_MEMORIES = 50;
 export const MAX_WISHES = 15;
 
 /** Only parent-approved wishes Santa is allowed to mention, top wishes first. */
@@ -136,16 +138,14 @@ export function selectTalkingPoints(points: TalkingPointInput[], now: Date): Tal
     .slice(0, MAX_TALKING_POINTS);
 }
 
-/** Only parent-approved memories are ever eligible. Least-recently-referenced first, then newest. */
+/**
+ * Only parent-approved memories are ever eligible. Santa gets all of them (newest first, up to a
+ * generous cap) so he never forgets something the family confirmed; he's told to mention few.
+ */
 export function selectMemories(memories: MemoryInput[]): MemoryInput[] {
   return memories
     .filter((m) => m.status === "APPROVED" && clean(m.content))
-    .sort((a, b) => {
-      const ar = a.lastReferencedAt?.getTime() ?? 0;
-      const br = b.lastReferencedAt?.getTime() ?? 0;
-      if (ar !== br) return ar - br;
-      return b.createdAt.getTime() - a.createdAt.getTime();
-    })
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, MAX_MEMORIES);
 }
 
@@ -288,6 +288,16 @@ ${call.askedIfGoodBefore
   sections.push(`# What ${name}'s family has told you (authoritative)
 ${profile.length ? profile.join("\n") : "- Not much yet. Be curious and ask about their life."}`);
 
+  const household = (input.householdNotes ?? []).map((n) => clean(n)).filter(Boolean);
+  if (household.length) {
+    sections.push(`# ${name}'s household (authoritative)
+Shared facts about ${name}'s home and family. You know all of this well, the way you'd know any family on your list. Use it to recognize names and things ${name} mentions; don't recite it.
+${household.map((n) => n.slice(0, 2000)).join("\n")}`);
+  }
+
+  sections.push(`# Scout elves
+Many families have a scout elf who visits from the North Pole for the season, keeps an eye on things and flies back each night to report to you. If ${name} mentions their elf (by name or as "our elf"), that's one of your own scout elves: you know them well, you hear their reports, and you're happy to talk about them. Never say anything that would make the elf seem not real.`);
+
   if (points.length) {
     sections.push(`# Things you'd like to bring up
 Background for this call. Use at most ONE of these (the highest priority that fits), briefly, after the catch-up and the Christmas wish. Don't read them out and don't try to cover them all; the rest can wait for another call.
@@ -296,16 +306,16 @@ ${points
   .join("\n")}`);
   }
 
-  const recent = (call.recentCalls ?? []).filter((c) => clean(c.summary)).slice(0, 3);
+  const recent = (call.recentCalls ?? []).filter((c) => clean(c.summary)).slice(0, 10);
   if (recent.length) {
     sections.push(`# Your recent calls with ${name}
-This is what you talked about last time, so the call feels like a continuation, not a fresh start. Bring up ONE thing from the most recent call early on, warmly and briefly. Don't recite it, and don't repeat questions you already asked last time unless something has changed.
+Newest first. This is your history with ${name}, so the call feels like a continuation, not a fresh start, and you never contradict something you talked about before. Bring up ONE thing from the most recent call early on, warmly and briefly. Don't recite it, and don't repeat questions you already asked last time unless something has changed.
 ${recent.map((c) => `- ${localTimeDescription(c.at, call.timezone)}: ${clean(c.summary).slice(0, 500)}`).join("\n")}`);
   }
 
   if (memories.length) {
     sections.push(`# Things you remember from earlier calls
-These came from previous conversations and were confirmed by the family. Reference at most one, casually ("last time you told me…"), and only when it fits. Don't repeat the same memory every call.
+These came from previous conversations and were confirmed by the family. You know all of them, so use them to recognize what ${name} talks about and never contradict them. Bring up at most one or two on your own, casually ("last time you told me…"), and vary which ones from call to call.
 ${memories.map((m) => `- ${clean(m.content)}`).join("\n")}`);
   }
 

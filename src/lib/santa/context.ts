@@ -21,6 +21,8 @@ export async function assembleCallContext(params: {
       family: { include: { personality: true } },
       talkingPoints: true,
       memories: { where: { status: "APPROVED" } },
+      // Household notes from the parents who manage this child (the same parents whose device code shows them).
+      access: { select: { parentUser: { select: { householdNotes: true } } } },
       // Santa only ever sees the title and details of approved, mentionable wishes.
       wishes: {
         where: { approved: true, santaCanMention: true },
@@ -45,7 +47,7 @@ export async function assembleCallContext(params: {
       ? db.call.findMany({
           where: { childId: child.id, connectedAt: { not: null }, summary: { not: null }, safetyFlag: false },
           orderBy: { startedAt: "desc" },
-          take: 3,
+          take: 10,
           select: { startedAt: true, summary: true },
         })
       : Promise.resolve([] as { startedAt: Date; summary: string | null }[]),
@@ -70,6 +72,7 @@ export async function assembleCallContext(params: {
     child: { ...child, customFields },
     talkingPoints: child.talkingPoints,
     memories: child.memories,
+    householdNotes: child.access.map((a) => a.parentUser.householdNotes).filter((n) => n.trim()),
     wishes: child.wishes,
     call: {
       now,

@@ -41,6 +41,7 @@ export const parentPatchSchema = z.object({
 
 export const meSchema = z.object({
   consent: z.boolean().optional(),
+  householdNotes: text(2000).optional(),
   name: text(80).min(1).optional(),
 });
 
