@@ -73,6 +73,7 @@ model Family {
   weeklyMinutesPerChild   Int     @default(20) // resets Monday, family time zone
   generateMemoryProposals Boolean @default(true)
   autoRecallCalls         Boolean @default(true) // Santa gets recaps of recent calls without approval
+  autoApproveMemories     Boolean @default(true) // new memories from calls go straight to Santa (parents can edit or delete)
   ambientSound            Boolean @default(false)
   elevenAgentId           String? // ElevenLabs agent created by the app
   elevenAgentVersion      Int     @default(0) // agent settings version last pushed to ElevenLabs
@@ -288,6 +289,8 @@ model Call {
   summaryStatus   SummaryStatus  @default(NONE)
   safetyFlag      Boolean        @default(false)
   safetyNote      String?
+  /// How this call was planned (opener, extras, wish check-in), so the next call can be different.
+  conversationPlan String?
   memories        Memory[]
   wishes          WishListItem[]
 

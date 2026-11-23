@@ -134,6 +134,7 @@ export const familySettingsSchema = z.object({
   generateMemoryProposals: z.boolean().optional(),
   ambientSound: z.boolean().optional(),
   autoRecallCalls: z.boolean().optional(),
+  autoApproveMemories: z.boolean().optional(),
 });
 
 export const callSummaryPatchSchema = z.object({

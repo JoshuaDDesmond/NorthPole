@@ -653,7 +653,8 @@ await check("End Call terminates WebRTC, releases the mic, and shows the ended s
   }
   assert(live === 0, `${live} calls still open`);
 });
-await check("post-call memories are only proposed, and only approved ones reach the next call", async () => {
+await check("with automatic memories off, post-call memories are only proposed, and only approved ones reach the next call", async () => {
+  await parent("/api/parent/settings", { method: "PATCH", body: { autoApproveMemories: false } });
   // The previous call ended without a digest reply configured; run one more short call with a configured digest.
   mock.digestReply = {
     summary: "Talked about hockey.",
@@ -716,6 +717,31 @@ await check("wishes a kid tells Santa land on the list for review, then reach Sa
   const s2 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
   assert(mock.sessions.at(-1).session.instructions.includes("Bauer Vapor hockey skates (size 8, black)"), "kept wish missing from next call");
   await kid(`/api/call/${s2.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+});
+await check("with automatic memories on (the default), new memories go straight to Santa", async () => {
+  await parent("/api/parent/settings", { method: "PATCH", body: { autoApproveMemories: true } });
+  mock.digestReply = {
+    summary: "Talked about the big goal.",
+    proposedMemories: ["Scored the winning goal in last week's hockey game"],
+    newWishes: [], discussedTalkingPointIds: [], referencedMemoryIds: [], safetyConcern: false, safetyNote: "" };
+  await page.getByRole("button", { name: "Call Santa Again" }).click();
+  await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
+  await peer.evaluate(() => {
+    window.__dc.send(JSON.stringify({ type: "conversation.item.input_audio_transcription.completed", transcript: "I scored the winning goal!" }));
+    window.__dc.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "Now that's something!" }));
+  });
+  await sleep(21000);
+  await page.getByRole("button", { name: "End Call" }).click();
+  await page.getByText("Call ended").waitFor();
+  let row;
+  for (let i = 0; i < 20 && !row; i++) {
+    await sleep(500);
+    row = (await db.query(`SELECT status FROM "Memory" WHERE content='Scored the winning goal in last week''s hockey game'`)).rows[0];
+  }
+  assert(row && row.status === "APPROVED", `memory row ${JSON.stringify(row)}`);
+  const s1 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
+  assert(mock.sessions.at(-1).session.instructions.includes("Scored the winning goal"), "automatic memory missing from next call");
+  await kid(`/api/call/${s1.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
 });
 await check("a slow reply shows a North Pole weather note, and Santa speaking clears it", async () => {
   await page.getByRole("button", { name: "Call Santa Again" }).click();

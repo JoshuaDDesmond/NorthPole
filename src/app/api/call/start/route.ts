@@ -127,6 +127,7 @@ export const POST = handle(async (req: NextRequest) => {
       deviceId: device.deviceId,
       resumedFromId,
       maxSeconds: pacing.hardStopAt,
+      conversationPlan: ctx.conversationPlan,
       voice: provider === "elevenlabs" ? (ctx.eleven.voiceId ?? "agent-default") : typeof ctx.voice === "string" ? ctx.voice : "custom",
     },
   });

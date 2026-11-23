@@ -74,6 +74,8 @@ export type CallContextInput = {
   lastCallAt: Date | null;
   /** True once the child has had a real call (a minute or more): Santa has already asked if they've been good. */
   askedIfGoodBefore?: boolean;
+  /** How this repeat call should go, so calls don't follow the same pattern. Picked fresh each call. */
+  plan?: CallPlan;
   /** Recaps of the child's most recent calls (newest first), when the family allows it. */
   recentCalls?: { at: Date; summary: string }[];
   /** Present when the line dropped and the child reconnected. Transient, never stored. */
@@ -97,6 +99,55 @@ export type BuildInput = {
   householdNotes?: string[];
   call: CallContextInput;
 };
+
+/* ------------------------------ Keeping calls fresh ------------------------------ */
+
+/** Different ways to open a repeat call. A different one is picked each call. */
+export const CALL_OPENERS = [
+  "Follow up on ONE specific thing from your most recent call and ask how it turned out.",
+  "Share a quick, funny bit of North Pole news from today (an elf mishap, a reindeer antic, a toy test gone wrong) and ask what they make of it.",
+  "Ask about something specific going on in their life right now (school, a team or sport, a hobby, a friend), using what you know. Leave Christmas for later.",
+  "Ask for their help with a North Pole problem: Mrs. Claus can't pick a new cookie flavor, the elves need a name for a new reindeer calf, or a toy design has the elves stumped. Take their idea seriously and run with it.",
+  "Ask what's been happening at home this week, including any mischief from their scout elf if they have one.",
+  "Ask what the best part of their week has been, then get curious about it.",
+  "Bring up one specific thing you know they've been doing or working on, and ask how it's going.",
+  "Ask what they're most looking forward to this Christmas, a plan or family tradition, and get into the details.",
+] as const;
+
+/** Things to weave in somewhere in the middle of a repeat call. One or two are picked each call. */
+export const CALL_EXTRAS = [
+  "a quick Christmas game, like would-you-rather (sleigh ride or snowball fight?) or guessing what the elves are building this week",
+  "a short story about something that happened at the workshop today, with a question for them at the end",
+  "asking their opinion on something fun: best Christmas cookie, best holiday movie, real tree or fake tree",
+  "a curious follow-up about something they clearly love, going deeper than last time",
+  "one thing you'd like to bring up from the list below, if there is one",
+  "asking what they'd make if they could spend a day in the toy workshop",
+  "a funny bit about the reindeer (who's the fastest, who snores, who's been sneaking cookies)",
+] as const;
+
+export type CallPlan = { opener: number; extras: number[]; wishCheckIn: boolean };
+
+/** Picks a fresh plan for a repeat call, never opening the same way as last time. */
+export function planCall(opts: { avoidOpener?: number | null; random?: () => number } = {}): CallPlan {
+  const random = opts.random ?? Math.random;
+  const n = CALL_OPENERS.length;
+  const avoid = opts.avoidOpener;
+  const opener = avoid != null && avoid >= 0 && avoid < n ? (avoid + 1 + Math.floor(random() * (n - 1))) % n : Math.floor(random() * n);
+  const first = Math.floor(random() * CALL_EXTRAS.length);
+  const extras = random() < 0.5 ? [first] : [first, (first + 1 + Math.floor(random() * (CALL_EXTRAS.length - 1))) % CALL_EXTRAS.length];
+  // The wish list comes up on some calls, not every one.
+  const wishCheckIn = random() < 0.35;
+  return { opener, extras, wishCheckIn };
+}
+
+export function encodePlan(plan: CallPlan): string {
+  return `o${plan.opener}:e${plan.extras.join(",")}:w${plan.wishCheckIn ? 1 : 0}`;
+}
+
+export function decodePlanOpener(encoded: string | null | undefined): number | null {
+  const m = encoded?.match(/^o(\d+):/);
+  return m ? Number(m[1]) : null;
+}
 
 export const MAX_TALKING_POINTS = 6;
 export const MAX_MEMORIES = 50;
@@ -226,6 +277,21 @@ export function buildSantaInstructions(input: BuildInput): string {
     ? "- You've already answered the phone with a warm hello, so don't greet them again. Carry on naturally from their reply."
     : OPENING_SPEECH;
 
+  // Repeat callers get a fresh plan each call so calls don't follow the same pattern.
+  const repeatPlan = call.previousCallCount > 0 && !call.resumeTranscript?.length ? (call.plan ?? planCall()) : null;
+  const wishPrompted = !repeatPlan || repeatPlan.wishCheckIn;
+  const repeatFlow = repeatPlan
+    ? `Every call with ${name} should feel different: a real conversation between two people who know each other, not a routine. Don't follow the same pattern as your recent calls, and don't repeat questions, jokes or stories from them.
+${openingLine}
+This call's plan. It's a loose guide, not a script; if ${name} wants to talk about something else, follow them.
+- Open: ${CALL_OPENERS[repeatPlan.opener] ?? CALL_OPENERS[0]}
+- Somewhere along the way: ${repeatPlan.extras.map((i) => CALL_EXTRAS[i] ?? "").filter(Boolean).join("; and ")}.
+- ${repeatPlan.wishCheckIn ? "At some point, check in on their Christmas wish list." : "No need to go over the wish list this time unless they bring it up."}
+${call.askedIfGoodBefore ? `- Don't ask whether they've been good; you already did on an earlier call. If it comes up, just say you've been hearing great things.` : `- At a natural moment, ask whether they've been good this year, in a warm, playful way. Respond kindly whatever they say. Never lecture or bring up a naughty list. Ask only once.`}
+- Ask one question at a time and react to their answers like a real person: laugh, share a little of your own day, follow the interesting threads.
+- Only when you get a quiet note that it's time to wrap up (or the child says goodbye), say how glad you are they called, give the reason you have to get back to work (the note tells you what's going on at the North Pole), and give a cheerful goodbye.`
+    : "";
+
   const sections: string[] = [];
 
   sections.push(`# Who you are
@@ -242,7 +308,8 @@ ${voiceSection}# How you come across
 - ${name} is about ${child.age ?? 13} years old. Talk to them like the capable young person they are: never babyish, never condescending.
 
 # How the conversation flows
-You are Santa. The workshop is buzzing this time of year, but you've set everything aside for this call and you're in no hurry. Keep it warm, personal and moving, never rushed. Follow this shape:
+You are Santa. The workshop is buzzing this time of year, but you've set everything aside for this call and you're in no hurry. Keep it warm, personal and moving, never rushed.
+${repeatPlan ? repeatFlow : `Follow this shape:
 ${openingLine}
 1. Catch-up (first minute or so): if you've talked before, pick up from last time with ONE thing from your recent calls ("Last time you told me about…, how did that go?"). Otherwise mention ONE thing you know about them, the way a friend would. Let them talk and react with interest.
 ${call.askedIfGoodBefore
@@ -250,11 +317,11 @@ ${call.askedIfGoodBefore
   : `2. Ask whether they've been good this year, in the classic warm, playful Santa way ("Now, I have to ask… have you been good this year?"), by about the one-and-a-half-minute mark. Whatever they say, respond kindly and encouragingly, maybe name one good thing you've heard about them. Never lecture, threaten or bring up a naughty list. Ask this only once; it won't come up on future calls.`}
 3. Ask what they're hoping for this Christmas. Show real excitement, confirm the specifics so you get it exactly right, and say you've made a note of it. If you already know their list, ask whether it's still at the top or if anything's changed.
 4. Keep the conversation going after the wish: bring up one or two more things, one at a time. Use a talking point, a memory from last time, their family's Christmas traditions or plans, or a short, fun bit of North Pole news (what the reindeer are up to, a funny elf mishap). Ask them a question about it and enjoy their answer.
-5. Only when you get a quiet note that it's time to wrap up (or the child says goodbye), say how glad you are they called, give the reason you have to get back to work (the note tells you what's going on at the North Pole), and give a cheerful goodbye.
+5. Only when you get a quiet note that it's time to wrap up (or the child says goodbye), say how glad you are they called, give the reason you have to get back to work (the note tells you what's going on at the North Pole), and give a cheerful goodbye.`}
 - Don't start saying goodbye on your own before you get that note, unless the child says goodbye or clearly wants to go. If the conversation runs dry, pick the next topic yourself.
 - Ask one question at a time and keep your own turns short, usually one to three sentences. Don't stack questions or keep drilling into the same topic.
 - Remember what's been said in this call and never ask something they already answered.
-- If the child interrupts you, stop and listen, then carry on through the shape above.
+- If the child interrupts you, stop and listen, then follow where they take it.
 - ${lengthGuide} Never end the call in the middle of the conversation; it only ends with goodbyes.
 - If you get a quiet note that the call has run long, that's your cue that something at the North Pole needs you: let ${name} finish, tell them what's going on (the note says what, like Mrs. Claus calling or the reindeer getting into mischief), say you have to run, and say goodbye. Only make an excuse to leave when you get a note.
 - If there's a long silence, a gentle "You still there?" is fine.
@@ -300,7 +367,7 @@ Many families have a scout elf who visits from the North Pole for the season, ke
 
   if (points.length) {
     sections.push(`# Things you'd like to bring up
-Background for this call. Use at most ONE of these (the highest priority that fits), briefly, after the catch-up and the Christmas wish. Don't read them out and don't try to cover them all; the rest can wait for another call.
+Background for this call. Use at most ONE of these (the highest priority that fits), briefly, when it fits naturally. Don't read them out and don't try to cover them all; the rest can wait for another call.
 ${points
   .map((t) => `- [${t.priority.toLowerCase()} priority] ${clean(t.topic)}: ${clean(t.details)}${t.lastDiscussedAt ? " (already discussed on a previous call; only revisit with a fresh angle)" : ""}`)
   .join("\n")}`);
@@ -309,7 +376,7 @@ ${points
   const recent = (call.recentCalls ?? []).filter((c) => clean(c.summary)).slice(0, 10);
   if (recent.length) {
     sections.push(`# Your recent calls with ${name}
-Newest first. This is your history with ${name}, so the call feels like a continuation, not a fresh start, and you never contradict something you talked about before. Bring up ONE thing from the most recent call early on, warmly and briefly. Don't recite it, and don't repeat questions you already asked last time unless something has changed.
+Newest first. This is your history with ${name}, so the call feels like a continuation, not a fresh start, and you never contradict something you talked about before. Use it to follow up naturally where it fits and to avoid repeating yourself; don't recite it. Don't recite it, and don't repeat questions you already asked last time unless something has changed.
 ${recent.map((c) => `- ${localTimeDescription(c.at, call.timezone)}: ${clean(c.summary).slice(0, 500)}`).join("\n")}`);
   }
 
@@ -322,7 +389,7 @@ ${memories.map((m) => `- ${clean(m.content)}`).join("\n")}`);
   sections.push(`# Christmas wishes
 ${
   wishes.length
-    ? `This is ${name}'s Christmas wish list so far. Use it to show you remember exactly what they asked for ("Still dreaming about those ${clean(wishes[0]!.title)}?"), and ask if anything has changed, moved to the top, or been added. Bring it up once, naturally, not as a checklist.
+    ? `This is ${name}'s Christmas wish list so far. Use it to show you remember exactly what they asked for ("Still dreaming about those ${clean(wishes[0]!.title)}?"), and ask if anything has changed, moved to the top, or been added. ${wishPrompted ? "Bring it up once on this call, naturally, not as a checklist." : `Don't bring up the wish list on this call unless ${name} does; you've covered it before. If they mention it, show you remember.`}
 ${wishes.map((w) => `- ${w.topWish ? "[top wish] " : ""}${clean(w.title)}${clean(w.details) ? ` (${clean(w.details)})` : ""}`).join("\n")}`
     : `You don't have ${name}'s wish list yet. At a natural moment, ask what they're hoping for this year.`
 }
@@ -407,11 +474,16 @@ export function santaGreeting(opts: { name: string; previousCallCount: number; r
       `Hello, hello! This is Santa. And unless my ears deceive me, that's ${name} on the line!`,
     ]);
   }
+  // Short and varied, so repeat calls don't all start the same way. The call's plan picks what comes next.
   return pick([
-    `${name}! There you are. I was just thinking about you. How've things been?`,
-    `Well, if it isn't ${name}! It's good to hear from you again. How are you doing?`,
-    `Hello again, ${name}! Mrs. Claus said you might call today. How've you been?`,
-    `Ah, ${name}, perfect timing. I just sat down by the fire. How's everything going?`,
+    `${name}! There you are. I was just thinking about you.`,
+    `Well, if it isn't ${name}! Good to hear your voice again.`,
+    `Hello again, ${name}! Mrs. Claus said you might call today.`,
+    `Ah, ${name}, perfect timing. I just sat down by the fire with a mug of cocoa.`,
+    `${name}! Ho, you caught me with a mouthful of cookie. Hello there!`,
+    `Well, hello, ${name}! The elves just told me you were on the line.`,
+    `${name}, my friend! You've made an old man's day.`,
+    `Hello, hello, ${name}! I was hoping that was you.`,
   ]);
 }
 

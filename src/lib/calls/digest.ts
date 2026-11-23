@@ -5,14 +5,15 @@ import { safetyIdentifier } from "../openai/realtime";
 import { selectMemories, selectTalkingPoints } from "../santa/prompt";
 
 /**
- * Post-call processing. Runs after the response is sent. Produces a parent
- * summary and *proposed* memories (never auto-approved). The transcript lives
- * only in memory for the duration of this function.
+ * Post-call processing. Runs after the response is sent. Produces a parent summary and new
+ * memories: approved straight away when the family turned on automatic memories (never for a
+ * call flagged for a check-in), otherwise proposed for review. The transcript lives only in
+ * memory for the duration of this function.
  */
 export async function processCallDigest(callId: string, transcript: TranscriptTurn[]) {
   const call = await db.call.findUnique({
     where: { id: callId },
-    include: { child: { include: { talkingPoints: true, memories: { where: { status: "APPROVED" } }, wishes: { select: { title: true, details: true } } } } },
+    include: { child: { include: { family: { select: { autoApproveMemories: true } }, talkingPoints: true, memories: { where: { status: "APPROVED" } }, wishes: { select: { title: true, details: true } } } } },
   });
   if (!call) return;
   const now = new Date();
@@ -42,6 +43,7 @@ export async function processCallDigest(callId: string, transcript: TranscriptTu
     .filter((w) => w.title && !existing.has(normalizeWish(w.title)))
     .filter((w, i, all) => all.findIndex((x) => normalizeWish(x.title) === normalizeWish(w.title)) === i);
 
+  const autoApprove = c.family.autoApproveMemories && !digest.safetyConcern;
   const discussed = digest.discussedTalkingPointIds.filter((id) => validPointIds.has(id));
   const referenced = digest.referencedMemoryIds.filter((id) => validMemoryIds.has(id));
 
@@ -58,7 +60,7 @@ export async function processCallDigest(callId: string, transcript: TranscriptTu
     ...digest.proposedMemories
       .map((m) => m.trim())
       .filter(Boolean)
-      .map((content) => db.memory.create({ data: { childId: c.id, callId: call.id, content, status: "PROPOSED", source: "CALL" } })),
+      .map((content) => db.memory.create({ data: { childId: c.id, callId: call.id, content, status: autoApprove ? "APPROVED" : "PROPOSED", source: "CALL" } })),
     ...newWishes.map((w) =>
       db.wishListItem.create({ data: { childId: c.id, callId: call.id, title: w.title, details: w.details, source: "CALL", approved: false } }),
     ),

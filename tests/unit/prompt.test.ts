@@ -150,7 +150,7 @@ describe("buildSantaInstructions", () => {
     const text = buildSantaInstructions(input);
     expect(text).toContain("# Your recent calls with Alex");
     expect(text).toContain("hockey tournament and asked for a goalie stick");
-    expect(text).toMatch(/pick up from last time/);
+    expect(text).toMatch(/follow up naturally where it fits and to avoid repeating yourself/);
   });
 
   it("tells Santa to sound like an older man", () => {
@@ -337,7 +337,7 @@ describe("call pacing and goodbyes", async () => {
     const input = baseInput();
     const later = buildSantaInstructions({ ...input, call: { ...input.call, previousCallCount: 2, askedIfGoodBefore: true } });
     expect(later).not.toMatch(/have you been good this year\?/);
-    expect(later).toMatch(/don't ask it again/);
+    expect(later).toMatch(/Don't ask whether they've been good; you already did/);
   });
   it("wraps up only when cued, and stops after the goodbye", () => {
     expect(timeToWrapUpNudge()).toMatch(/start wrapping up/);

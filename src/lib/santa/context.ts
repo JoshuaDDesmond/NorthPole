@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "../db";
-import { buildSantaInstructions, santaGreeting, selectMemories, selectTalkingPoints, type BuildInput } from "./prompt";
+import { buildSantaInstructions, santaGreeting, selectMemories, selectTalkingPoints, type BuildInput, decodePlanOpener, encodePlan, planCall } from "./prompt";
 import { env } from "../env";
 import { DEFAULT_ELEVEN_LLM, DEFAULT_VOICE, isKnownElevenLlm, isKnownVoice } from "./voices";
 
@@ -40,7 +40,7 @@ export async function assembleCallContext(params: {
     db.call.findFirst({
       where: { childId: child.id, connectedAt: { not: null } },
       orderBy: { startedAt: "desc" },
-      select: { startedAt: true },
+      select: { startedAt: true, conversationPlan: true },
     }),
     // Recaps of recent calls (never ones flagged for a parent check-in), if the family allows it.
     child.family.autoRecallCalls
@@ -52,6 +52,9 @@ export async function assembleCallContext(params: {
         })
       : Promise.resolve([] as { startedAt: Date; summary: string | null }[]),
   ]);
+
+  // A fresh plan for every repeat call, never opening the same way as the last one.
+  const plan = planCall({ avoidOpener: decodePlanOpener(lastCall?.conversationPlan) });
 
   const personality = child.family.personality;
   const customFields = Array.isArray(child.customFields)
@@ -80,6 +83,7 @@ export async function assembleCallContext(params: {
       maxMinutes: params.maxMinutes,
       previousCallCount,
       askedIfGoodBefore: realCallCount > 0,
+      plan,
       lastCallAt: lastCall?.startedAt ?? null,
       resumeTranscript: params.resumeTranscript,
       recentCalls: recentCalls.map((c) => ({ at: c.startedAt, summary: c.summary ?? "" })),
@@ -112,5 +116,7 @@ export async function assembleCallContext(params: {
     },
     usedTalkingPoints: selectTalkingPoints(child.talkingPoints, now),
     usedMemories: selectMemories(child.memories),
+    /** Stored on the call so the next call can be different. */
+    conversationPlan: previousCallCount > 0 ? encodePlan(plan) : null,
   };
 }

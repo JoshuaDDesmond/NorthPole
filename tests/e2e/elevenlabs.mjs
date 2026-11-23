@@ -291,7 +291,7 @@ await check("Santa asks \"have you been good\" on the first real call only", asy
   const r = await kid("/api/call/start", { method: "POST", body: { childId } });
   assert(r.status === 200, `start ${r.status}`);
   const prompt = r.json.overrides.agent.prompt.prompt;
-  assert(!prompt.includes("have you been good this year?") && prompt.includes("don't ask it again"), "repeat call should not ask again");
+  assert(!prompt.includes("have you been good this year?") && prompt.includes("Don't ask whether they've been good; you already did"), "repeat call should not ask again");
   await kid(`/api/call/${r.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
 });
 
