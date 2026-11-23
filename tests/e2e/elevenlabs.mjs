@@ -228,7 +228,7 @@ await check("call start returns a one-time token and this child's briefing, with
 });
 
 await check("call start includes pacing cues for a 3 to 5 minute call", async () => {
-  assert(started.pacing && started.pacing.keepGoingAt === 110 && started.pacing.wrapUpAt === 240, JSON.stringify(started.pacing));
+  assert(started.pacing && started.pacing.wrapUpAt === 240 && !("keepGoingAt" in started.pacing), JSON.stringify(started.pacing));
 });
 
 await check("connected, heartbeat and end work without trying to hang up via OpenAI", async () => {
@@ -261,6 +261,16 @@ await check("the parent's voice and model choices are used on the next call", as
   await kid(`/api/call/${r.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
   const bad = await owner("/api/parent/personality", { method: "PATCH", body: { elevenLlm: "made-up-model" } });
   assert(bad.status === 400, `bad model ${bad.status}`);
+});
+
+await check("Santa asks \"have you been good\" on the first real call only", async () => {
+  assert(started.overrides.agent.prompt.prompt.includes("have you been good this year?"), "first call should ask");
+  await db.query(`UPDATE "Call" SET "durationSec" = 150 WHERE id = $1`, [started.callId]);
+  const r = await kid("/api/call/start", { method: "POST", body: { childId } });
+  assert(r.status === 200, `start ${r.status}`);
+  const prompt = r.json.overrides.agent.prompt.prompt;
+  assert(!prompt.includes("have you been good this year?") && prompt.includes("don't ask it again"), "repeat call should not ask again");
+  await kid(`/api/call/${r.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
 });
 
 await check("owner sees live plan usage and call minutes; other parents can't", async () => {

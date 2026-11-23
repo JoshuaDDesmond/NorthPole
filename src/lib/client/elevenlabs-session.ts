@@ -1,7 +1,7 @@
 "use client";
 
 import type { VoiceConversation } from "@elevenlabs/client";
-import { isGoodbye, isSantaGoodbye, keepGoingNudge, timeToWrapUpNudge, wrapUpNudge } from "../santa/prompt";
+import { isGoodbye, isSantaGoodbye, timeToWrapUpNudge, wrapUpNudge } from "../santa/prompt";
 import { GoodbyeFlow } from "./goodbye";
 import { CallError, friendlyError, type CallErrorCode, type CallPhase, type EndReason, type TranscriptTurn, type VoiceSessionEvents } from "./voice-session";
 
@@ -16,6 +16,8 @@ import { CallError, friendlyError, type CallErrorCode, type CallPhase, type EndR
 
 const HEARTBEAT_MS = 20_000;
 const WRAP_UP_LEAD_SECONDS = 45;
+/** When time runs out mid-sentence, how long Santa gets to finish before the line closes. */
+const TIME_UP_GRACE_MS = 15_000;
 const CHILD_SPEAKING_THRESHOLD = 0.12;
 
 type StartResponse = {
@@ -24,7 +26,7 @@ type StartResponse = {
   conversationToken?: string;
   overrides?: Record<string, unknown>;
   maxSeconds?: number;
-  pacing?: { keepGoingAt: number | null; wrapUpAt: number };
+  pacing?: { wrapUpAt: number };
   collectTranscript?: boolean;
   error?: { code: string; message: string };
 };
@@ -47,11 +49,12 @@ export class ElevenLabsSession {
   private childSpeaking = false;
   private mode: "speaking" | "listening" = "listening";
   private volume = 1;
-  private pacing: { keepGoingAt: number | null; wrapUpAt: number } | null = null;
+  private pacing: { wrapUpAt: number } | null = null;
   /** Santa's goodbye, one answer from the child, Santa's last word, then hang up. */
   private goodbye = new GoodbyeFlow(() => void this.end("goodbye"));
   /** Santa may only start the goodbyes himself once he's been told it's time. */
   private wrapUpCueSent = false;
+  private timeUpPending = false;
 
   constructor(
     private readonly childId: string,
@@ -147,7 +150,10 @@ export class ElevenLabsSession {
         },
         onModeChange: ({ mode }) => {
           if (mode === "speaking" && this.mode !== "speaking") this.goodbye.santaStarted();
-          if (mode === "listening" && this.mode === "speaking") this.goodbye.santaFinished();
+          if (mode === "listening" && this.mode === "speaking") {
+            this.goodbye.santaFinished();
+            if (this.timeUpPending) this.timers.push(setTimeout(() => void this.end("time_limit"), 700));
+          }
           this.mode = mode;
           if (mode === "speaking" && this.childSpeaking) {
             this.childSpeaking = false;
@@ -190,9 +196,8 @@ export class ElevenLabsSession {
     if (this.maxSeconds > WRAP_UP_LEAD_SECONDS + 15) {
       this.timers.push(setTimeout(() => this.sendWrapUp(WRAP_UP_LEAD_SECONDS), (this.maxSeconds - WRAP_UP_LEAD_SECONDS) * 1000));
     }
-    this.timers.push(setTimeout(() => void this.end("time_limit"), this.maxSeconds * 1000));
-    // Quiet pacing cues: the model has no clock, so the app tells Santa when to keep going and when to wrap up.
-    if (this.pacing?.keepGoingAt) this.timers.push(setTimeout(() => this.sendNote(keepGoingNudge()), this.pacing.keepGoingAt * 1000));
+    this.timers.push(setTimeout(() => this.timeUp(), this.maxSeconds * 1000));
+    // The model has no clock, so the app tells Santa when it's time to wrap up. Nothing else is sent mid-call.
     if (this.pacing && this.pacing.wrapUpAt < this.maxSeconds - WRAP_UP_LEAD_SECONDS) {
       this.timers.push(setTimeout(() => {
           this.wrapUpCueSent = true;
@@ -227,6 +232,21 @@ export class ElevenLabsSession {
     } catch {
       /* transient */
     }
+  }
+
+  /** Time's up: let Santa finish what he's saying (up to 15s) instead of cutting him off mid-sentence. */
+  private timeUp() {
+    if (this.ended) return;
+    if (!this.santaIsTalking()) {
+      void this.end("time_limit");
+      return;
+    }
+    this.timeUpPending = true;
+    this.timers.push(setTimeout(() => void this.end("time_limit"), TIME_UP_GRACE_MS));
+  }
+
+  private santaIsTalking() {
+    return this.mode === "speaking";
   }
 
   private sendNote(text: string) {

@@ -278,12 +278,11 @@ describe("text-engine briefing and greetings (ElevenLabs)", async () => {
 });
 
 describe("call pacing and goodbyes", async () => {
-  const { callPacing, isGoodbye, keepGoingNudge, timeToWrapUpNudge } = await import("@/lib/santa/prompt");
+  const { callPacing, isGoodbye, timeToWrapUpNudge } = await import("@/lib/santa/prompt");
   it("targets 3 to 5 minutes by default and never past the time limit", () => {
-    expect(callPacing("MEDIUM", 600)).toEqual({ keepGoingAt: 110, wrapUpAt: 240 });
-    expect(callPacing("SHORT", 600)).toEqual({ keepGoingAt: 110, wrapUpAt: 180 });
+    expect(callPacing("MEDIUM", 600)).toEqual({ wrapUpAt: 240 });
+    expect(callPacing("SHORT", 600)).toEqual({ wrapUpAt: 180 });
     expect(callPacing("LONG", 300).wrapUpAt).toBe(250);
-    expect(callPacing("MEDIUM", 120).keepGoingAt).toBeNull();
   });
   it("recognizes a child's goodbye without false alarms", () => {
     for (const bye of ["Bye Santa!", "okay bye", "Goodbye!", "I gotta go", "see ya", "talk to you later", "good night Santa"]) expect(isGoodbye(bye)).toBe(true);
@@ -291,9 +290,15 @@ describe("call pacing and goodbyes", async () => {
       expect(isGoodbye(not)).toBe(false);
     }
   });
-  it("tells Santa to keep going early and wrap up later, and to stop after the goodbye", () => {
-    expect(keepGoingNudge()).toMatch(/keep the conversation going/);
-    expect(keepGoingNudge()).not.toMatch(/goodbye|hang/i);
+  it("asks \"have you been good\" only until the child has had a real call", () => {
+    const first = buildSantaInstructions(baseInput());
+    expect(first).toMatch(/have you been good this year\?/);
+    const input = baseInput();
+    const later = buildSantaInstructions({ ...input, call: { ...input.call, previousCallCount: 2, askedIfGoodBefore: true } });
+    expect(later).not.toMatch(/have you been good this year\?/);
+    expect(later).toMatch(/don't ask it again/);
+  });
+  it("wraps up only when cued, and stops after the goodbye", () => {
     expect(timeToWrapUpNudge()).toMatch(/start wrapping up/);
     const text = buildSantaInstructions(baseInput());
     expect(text).toMatch(/say ONE short, warm goodbye that ends with the word "bye"/);

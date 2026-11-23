@@ -1,6 +1,6 @@
 "use client";
 
-import { isGoodbye, isSantaGoodbye, keepGoingNudge, timeToWrapUpNudge, wrapUpNudge } from "../santa/prompt";
+import { isGoodbye, isSantaGoodbye, timeToWrapUpNudge, wrapUpNudge } from "../santa/prompt";
 import { GoodbyeFlow } from "./goodbye";
 
 /**
@@ -49,6 +49,8 @@ export type VoiceSessionEvents = {
 const CONNECT_TIMEOUT_MS = 20_000;
 const HEARTBEAT_MS = 20_000;
 const WRAP_UP_LEAD_SECONDS = 45;
+/** When time runs out mid-sentence, how long Santa gets to finish before the line closes. */
+const TIME_UP_GRACE_MS = 15_000;
 const DISCONNECT_GRACE_MS = 6_000;
 
 export class CallError extends Error {
@@ -99,11 +101,13 @@ export class VoiceSessionManager {
   private ended = false;
   private wrapUpSent = false;
   private responding = false;
-  private pacing: { keepGoingAt: number | null; wrapUpAt: number } | null = null;
+  private pacing: { wrapUpAt: number } | null = null;
   /** Santa's goodbye, one answer from the child, Santa's last word, then hang up. */
   private goodbye = new GoodbyeFlow(() => void this.end("goodbye"));
   /** Santa may only start the goodbyes himself once he's been told it's time. */
   private wrapUpCueSent = false;
+  private timeUpPending = false;
+  private santaAudioPlaying = false;
 
   constructor(
     private readonly childId: string,
@@ -199,7 +203,7 @@ export class VoiceSessionManager {
       callId?: string;
       answerSdp?: string;
       maxSeconds?: number;
-      pacing?: { keepGoingAt: number | null; wrapUpAt: number };
+      pacing?: { wrapUpAt: number };
       collectTranscript?: boolean;
       error?: { code: string; message: string };
     };
@@ -308,9 +312,8 @@ export class VoiceSessionManager {
     if (this.maxSeconds > WRAP_UP_LEAD_SECONDS + 15) {
       this.timers.push(setTimeout(() => this.sendWrapUp(WRAP_UP_LEAD_SECONDS), wrapAt));
     }
-    this.timers.push(setTimeout(() => void this.end("time_limit"), this.maxSeconds * 1000));
-    // Quiet pacing cues: the model has no clock, so the app tells Santa when to keep going and when to wrap up.
-    if (this.pacing?.keepGoingAt) this.timers.push(setTimeout(() => this.sendSystemNote(keepGoingNudge()), this.pacing.keepGoingAt * 1000));
+    this.timers.push(setTimeout(() => this.timeUp(), this.maxSeconds * 1000));
+    // The model has no clock, so the app tells Santa when it's time to wrap up. Nothing else is sent mid-call.
     if (this.pacing && this.pacing.wrapUpAt < this.maxSeconds - WRAP_UP_LEAD_SECONDS) {
       this.timers.push(setTimeout(() => {
         this.wrapUpCueSent = true;
@@ -346,6 +349,21 @@ export class VoiceSessionManager {
   private sendSystemNote(text: string) {
     if (this.ended || this.goodbye.active) return;
     this.send({ type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text }] } });
+  }
+
+  /** Time's up: let Santa finish what he's saying (up to 15s) instead of cutting him off mid-sentence. */
+  private timeUp() {
+    if (this.ended) return;
+    if (!this.santaIsTalking()) {
+      void this.end("time_limit");
+      return;
+    }
+    this.timeUpPending = true;
+    this.timers.push(setTimeout(() => void this.end("time_limit"), TIME_UP_GRACE_MS));
+  }
+
+  private santaIsTalking() {
+    return this.santaAudioPlaying;
   }
 
   /** Goodbyes have started (the child's or Santa's). See GoodbyeFlow for how the call ends. */
@@ -386,6 +404,7 @@ export class VoiceSessionManager {
         this.goodbye.santaStarted();
         break;
       case "output_audio_buffer.started":
+        this.santaAudioPlaying = true;
         this.goodbye.santaStarted();
         break;
       case "response.done":
@@ -393,7 +412,9 @@ export class VoiceSessionManager {
         break;
       case "output_audio_buffer.stopped":
         // Santa finished speaking (or was talked over).
+        this.santaAudioPlaying = false;
         this.goodbye.santaFinished();
+        if (this.timeUpPending) this.timers.push(setTimeout(() => void this.end("time_limit"), 700));
         break;
       case "conversation.item.input_audio_transcription.completed":
         if (this.collectTranscript && ev.transcript?.trim()) this.pushTurn("child", ev.transcript);

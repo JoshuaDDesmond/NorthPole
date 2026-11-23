@@ -72,6 +72,8 @@ export type CallContextInput = {
   maxMinutes: number;
   previousCallCount: number;
   lastCallAt: Date | null;
+  /** True once the child has had a real call (a minute or more): Santa has already asked if they've been good. */
+  askedIfGoodBefore?: boolean;
   /** Recaps of the child's most recent calls (newest first), when the family allows it. */
   recentCalls?: { at: Date; summary: string }[];
   /** Present when the line dropped and the child reconnected. Transient, never stored. */
@@ -242,7 +244,9 @@ ${voiceSection}# How you come across
 You are Santa, and it's a busy season at the workshop, but this call matters to you. Keep it warm, personal and moving, never rushed. Follow this shape:
 ${openingLine}
 1. Catch-up (first minute or so): if you've talked before, pick up from last time with ONE thing from your recent calls ("Last time you told me about…, how did that go?"). Otherwise mention ONE thing you know about them, the way a friend would. Let them talk and react with interest.
-2. Ask whether they've been good this year, in the classic warm, playful Santa way ("Now, I have to ask… have you been good this year?"), by about the one-and-a-half-minute mark. Whatever they say, respond kindly and encouragingly, maybe name one good thing you've heard about them. Never lecture, threaten or bring up a naughty list.
+${call.askedIfGoodBefore
+  ? `2. You already asked ${name} whether they've been good on an earlier call, so don't ask it again, in any form. If it comes up on its own, just say you've been hearing great things.`
+  : `2. Ask whether they've been good this year, in the classic warm, playful Santa way ("Now, I have to ask… have you been good this year?"), by about the one-and-a-half-minute mark. Whatever they say, respond kindly and encouragingly, maybe name one good thing you've heard about them. Never lecture, threaten or bring up a naughty list. Ask this only once; it won't come up on future calls.`}
 3. Ask what they're hoping for this Christmas. Show real excitement, confirm the specifics so you get it exactly right, and say you've made a note of it. If you already know their list, ask whether it's still at the top or if anything's changed.
 4. Keep the conversation going after the wish: bring up one or two more things, one at a time. Use a talking point, a memory from last time, their family's Christmas traditions or plans, or a short, fun bit of North Pole news (what the reindeer are up to, a funny elf mishap). Ask them a question about it and enjoy their answer.
 5. Only when you get a quiet note that it's time to wrap up (or the child says goodbye), say how glad you are they called, that the elves need you back in the workshop, and give a cheerful goodbye.
@@ -283,7 +287,7 @@ ${profile.length ? profile.join("\n") : "- Not much yet. Be curious and ask abou
 
   if (points.length) {
     sections.push(`# Things you'd like to bring up
-Background for this call. Use at most ONE of these (the highest priority that fits), briefly, after the "have you been good" and Christmas wish questions. Don't read them out and don't try to cover them all; the rest can wait for another call.
+Background for this call. Use at most ONE of these (the highest priority that fits), briefly, after the catch-up and the Christmas wish. Don't read them out and don't try to cover them all; the rest can wait for another call.
 ${points
   .map((t) => `- [${t.priority.toLowerCase()} priority] ${clean(t.topic)}: ${clean(t.details)}${t.lastDiscussedAt ? " (already discussed on a previous call; only revisit with a fresh angle)" : ""}`)
   .join("\n")}`);
@@ -332,11 +336,6 @@ ${tail.map((t) => `${t.role === "child" ? name : "Santa"}: ${clean(t.text).slice
   return sections.join("\n\n");
 }
 
-/** Quiet mid-call cue so Santa keeps the call going instead of wrapping up too early. */
-export function keepGoingNudge(): string {
-  return "(Quiet note for Santa, not from the child: the call is going well and there's plenty of time left, so keep the conversation going. If you've already asked whether they've been good and what they want for Christmas, bring up something new: a talking point, their Christmas plans or traditions, or a fun bit of North Pole news.)";
-}
-
 /** Quiet cue that the target call length has been reached. */
 export function timeToWrapUpNudge(): string {
   return "(Quiet note for Santa, not from the child: it's about time to start wrapping up. Finish the current topic, then over the next minute tell them how glad you are they called and say a warm goodbye.)";
@@ -380,8 +379,7 @@ export function santaGreeting(opts: { name: string; previousCallCount: number; r
 export function callPacing(length: "SHORT" | "MEDIUM" | "LONG", maxSeconds: number) {
   const target = { SHORT: 180, MEDIUM: 240, LONG: 390 }[length];
   const wrapUpAt = Math.max(60, Math.min(target, maxSeconds - 50));
-  const keepGoingAt = wrapUpAt > 150 ? 110 : null;
-  return { keepGoingAt, wrapUpAt };
+  return { wrapUpAt };
 }
 
 // "Bye" anywhere in a short line, or a leaving phrase at the very end ("ok I have to go"),

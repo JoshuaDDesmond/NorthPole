@@ -31,8 +31,10 @@ export async function assembleCallContext(params: {
   });
   if (!child) return null;
 
-  const [previousCallCount, lastCall, recentCalls] = await Promise.all([
+  const [previousCallCount, realCallCount, lastCall, recentCalls] = await Promise.all([
     db.call.count({ where: { childId: child.id, connectedAt: { not: null } } }),
+    // A call of a minute or more counts as the one where Santa asked "have you been good?".
+    db.call.count({ where: { childId: child.id, connectedAt: { not: null }, durationSec: { gte: 60 } } }),
     db.call.findFirst({
       where: { childId: child.id, connectedAt: { not: null } },
       orderBy: { startedAt: "desc" },
@@ -74,6 +76,7 @@ export async function assembleCallContext(params: {
       timezone: child.family.timezone,
       maxMinutes: params.maxMinutes,
       previousCallCount,
+      askedIfGoodBefore: realCallCount > 0,
       lastCallAt: lastCall?.startedAt ?? null,
       resumeTranscript: params.resumeTranscript,
       recentCalls: recentCalls.map((c) => ({ at: c.startedAt, summary: c.summary ?? "" })),
