@@ -121,6 +121,10 @@ export const POST = handle(async (req: NextRequest) => {
     alreadyTalkedSeconds: carriedOver,
   });
 
+  if (ctx.usedPhotoIds.length) {
+    await db.childPhoto.updateMany({ where: { id: { in: ctx.usedPhotoIds } }, data: { mentionedAt: new Date() } });
+  }
+
   const call = await db.call.create({
     data: {
       childId: child.id,

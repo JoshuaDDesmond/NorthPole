@@ -262,6 +262,13 @@ export class ElevenLabsSession {
     return this.mode === "speaking";
   }
 
+  /** The child sent Santa a picture mid-call: tell him what it shows and let him react. */
+  sendPicture(note: string) {
+    if (this.ended || !this.conversation) return;
+    this.conversation.sendContextualUpdate(note);
+    this.conversation.sendUserMessage("I just sent you a picture!");
+  }
+
   private sendNote(text: string) {
     if (this.ended || this.goodbye.active || !this.conversation) return;
     this.conversation.sendContextualUpdate(text);

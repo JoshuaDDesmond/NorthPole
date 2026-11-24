@@ -54,7 +54,7 @@ await db.connect();
 await db.query(`TRUNCATE "Family","ParentUser","ParentSession","FamilyDevice","Child","TalkingPoint","Memory","Call","SantaPersonality","RateLimitBucket" CASCADE`);
 
 /* ------------------------------ Mock OpenAI ------------------------------ */
-const mock = { sessions: [], hangups: [], digests: [], digestReply: null, peerPage: null };
+const mock = { sessions: [], hangups: [], digests: [], digestReply: null, peerPage: null, photoReviews: [], photoReply: null };
 const mockServer = createServer(async (req, res) => {
   const chunks = [];
   for await (const c of req) chunks.push(c);
@@ -87,6 +87,12 @@ const mockServer = createServer(async (req, res) => {
   }
   if (req.method === "POST" && req.url === "/v1/responses") {
     const parsed = JSON.parse(body.toString());
+    if (parsed.text?.format?.name === "photo_review") {
+      mock.photoReviews.push(parsed);
+      const reply = mock.photoReply ?? { description: "A hand-drawn poster of a red sleigh over a snowy house, with MERRY CHRISTMAS in green marker.", safeForSanta: true, concernNote: "" };
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(reply) }] }] }));
+      return;
+    }
     mock.digests.push(parsed);
     const reply = mock.digestReply ?? { summary: "", proposedMemories: [], newWishes: [], discussedTalkingPointIds: [], referencedMemoryIds: [], safetyConcern: false, safetyNote: "" };
     res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(reply) }] }] }));
@@ -742,6 +748,79 @@ await check("with automatic memories on (the default), new memories go straight 
   const s1 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
   assert(mock.sessions.at(-1).session.instructions.includes("Scored the winning goal"), "automatic memory missing from next call");
   await kid(`/api/call/${s1.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+});
+await check("a kid can send Santa a picture: checked, described, and Santa brings it up next call", async () => {
+  const upload = (qs) =>
+    page.evaluate(async (q) => {
+      const c = document.createElement("canvas");
+      c.width = 160;
+      c.height = 120;
+      const x = c.getContext("2d");
+      x.fillStyle = "#a5343a";
+      x.fillRect(0, 0, 160, 120);
+      const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.8));
+      const res = await fetch(`/api/family/photos?${q}`, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob });
+      return { status: res.status, json: await res.json() };
+    }, qs);
+  const sent = await upload(`childId=${aliceId}&caption=${encodeURIComponent("my Five Nights at Freddy's poster")}`);
+  assert(sent.status === 201 && sent.json.santaNote === null, `upload ${JSON.stringify(sent)}`);
+  const review = JSON.stringify(mock.photoReviews.at(-1));
+  assert(review.includes('"store":false'), "picture review must use store:false");
+  assert(review.includes("Five Nights at Freddy"), "the child's caption should guide the description");
+  const notPic = await page.evaluate(async (id) => (await fetch(`/api/family/photos?childId=${id}`, { method: "POST", body: "hello" })).status, aliceId);
+  assert(notPic === 415, `non-image ${notPic}`);
+  const s1 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
+  const brief = mock.sessions.at(-1).session.instructions;
+  assert(brief.includes("# Pictures Ace sent you") && brief.includes("red sleigh over a snowy house"), "picture missing from Santa's briefing");
+  assert(brief.includes(`Ace says it's "my Five Nights at Freddy's poster"`), "caption missing from Santa's briefing");
+  await kid(`/api/call/${s1.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+  const s2 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
+  assert(!mock.sessions.at(-1).session.instructions.includes("# Pictures Ace sent you"), "Santa shouldn't bring up the same picture twice");
+  await kid(`/api/call/${s2.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+
+  // A picture that needs a grown-up is held back from Santa.
+  mock.photoReply = { description: "A photo of a scraped knee.", safeForSanta: false, concernNote: "Shows an injury." };
+  const flagged = await upload(`childId=${aliceId}`);
+  assert(flagged.status === 201, `flagged upload ${flagged.status}`);
+  const s3 = await kid("/api/call/start", { method: "POST", body: { childId: aliceId, sdp: fakeOffer } });
+  assert(!mock.sessions.at(-1).session.instructions.includes("scraped knee"), "flagged picture reached Santa");
+  await kid(`/api/call/${s3.json.callId}/end`, { method: "POST", body: { reason: "cancelled" } });
+  mock.photoReply = null;
+  const row = (await db.query(`SELECT "safetyFlag" FROM "ChildPhoto" WHERE id=$1`, [flagged.json.id])).rows[0];
+  assert(row.safetyFlag === true, "flagged picture not marked");
+
+  // Parents who manage the child can see and delete it; others can't.
+  const img = await parent(`/api/parent/photos/${sent.json.id}`);
+  assert(img.status === 200 && img.text.length > 100, `parent view ${img.status}`);
+  const otherView = await jamie(`/api/parent/photos/${sent.json.id}`);
+  assert(otherView.status === 404 || otherView.status === 401, `other parent ${otherView.status}`);
+  const del = await parent(`/api/parent/photos/${flagged.json.id}`, { method: "DELETE" });
+  assert(del.status === 200, `delete ${del.status}`);
+});
+await check("during a call, Santa reacts to a picture right away", async () => {
+  await page.getByRole("button", { name: "Call Santa Again" }).click();
+  await page.getByText("Connected to North Pole Workshop").waitFor({ timeout: 20000 });
+  const b64 = await page.evaluate(async () => {
+    const c = document.createElement("canvas");
+    c.width = 200;
+    c.height = 150;
+    c.getContext("2d").fillRect(0, 0, 200, 150);
+    const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let s = "";
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s);
+  });
+  await page.locator('input[type="file"]').setInputFiles({ name: "poster.png", mimeType: "image/png", buffer: Buffer.from(b64, "base64") });
+  await page.getByLabel("What is it?").fill("my hockey team photo");
+  await page.getByRole("button", { name: "Send to Santa" }).click();
+  await page.getByText("Santa got your picture!").waitFor({ timeout: 10000 });
+  const told = await peer.evaluate(() => window.__events.some((e) => JSON.stringify(e).includes("just sent you a picture") && JSON.stringify(e).includes("my hockey team photo")));
+  assert(told, "Santa wasn't told about the picture and what it is");
+  await page.getByRole("button", { name: "End Call" }).click();
+  await page.getByText("Call ended").waitFor({ timeout: 8000 });
+  const live = (await db.query(`SELECT "callId", "mentionedAt" FROM "ChildPhoto" ORDER BY "createdAt" DESC LIMIT 1`)).rows[0];
+  assert(live.callId && live.mentionedAt, "live picture not recorded against the call");
 });
 await check("a slow reply shows a North Pole weather note, and Santa speaking clears it", async () => {
   await page.getByRole("button", { name: "Call Santa Again" }).click();

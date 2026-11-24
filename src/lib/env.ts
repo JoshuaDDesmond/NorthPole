@@ -20,6 +20,10 @@ export const env = {
   get transcriptionModel() {
     return process.env.OPENAI_TRANSCRIPTION_MODEL?.trim() || "gpt-transcribe";
   },
+  /** Model that describes pictures children send to Santa (must accept images). */
+  get visionModel() {
+    return process.env.OPENAI_VISION_MODEL?.trim() || this.summaryModel;
+  },
   get summaryModel() {
     return process.env.OPENAI_SUMMARY_MODEL?.trim() || "gpt-6-luna";
   },

@@ -206,6 +206,7 @@ model Child {
   calls         Call[]
   access        ChildAccess[]
   wishes        WishListItem[]
+  photos        ChildPhoto[]
 
   @@index([familyId])
 }
@@ -304,4 +305,27 @@ model RateLimitBucket {
   count       Int      @default(0)
 
   @@id([key, windowStart])
+}
+
+/// A picture a child sent to Santa from the call screen. Parents can see and delete it.
+model ChildPhoto {
+  id          String    @id @default(cuid())
+  childId     String
+  child       Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  /// The call it was sent during, if any (Santa reacted live).
+  callId      String?
+  image       Bytes
+  mimeType    String
+  /// What the child said it is ("my Five Nights at Freddy's poster").
+  caption     String    @default("")
+  /// What's in the picture, in a sentence or two, so Santa can talk about it.
+  description String    @default("")
+  /// Held back from Santa and shown to parents for a check-in.
+  safetyFlag  Boolean   @default(false)
+  safetyNote  String?
+  /// When Santa was told about it (live on a call, or in a later call's briefing).
+  mentionedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([childId, createdAt])
 }

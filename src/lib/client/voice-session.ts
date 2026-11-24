@@ -343,6 +343,13 @@ export class VoiceSessionManager {
     }
   }
 
+  /** The child sent Santa a picture mid-call: tell him what it shows and let him react. */
+  sendPicture(note: string) {
+    if (this.ended) return;
+    this.send({ type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text: note }] } });
+    if (!this.responding) this.send({ type: "response.create" });
+  }
+
   /** Adds a quiet instruction to the conversation without prompting Santa to speak. */
   private sendSystemNote(text: string) {
     if (this.ended || this.goodbye.active) return;

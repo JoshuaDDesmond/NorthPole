@@ -14,6 +14,7 @@ import { ConnectionStatus } from "./ConnectionStatus";
 import { PhoneFrame } from "./PhoneFrame";
 import { SantaContactPhoto } from "./SantaContactPhoto";
 import { SlowLineNote, useSlowLineNote } from "./SlowLineNote";
+import { PictureSender } from "./PictureSender";
 
 type Props = {
   childId: string;
@@ -41,6 +42,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
   const [childSpeaking, setChildSpeaking] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [slowNote, slowLine] = useSlowLineNote();
+  const [liveCallId, setLiveCallId] = useState<string | null>(null);
 
   const managerRef = useRef<VoiceSessionManager | ElevenLabsSession | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -89,6 +91,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
         onConnected: ({ connectedAt: at }) => {
           setConnectedAt(at);
           setView("connected");
+          setLiveCallId(manager.currentCallId);
           slowLine.connected();
           if (!speakerOn) manager.setSpeakerVolume(false);
           if (selectedOutput !== "default") void manager.setOutputDevice(selectedOutput).catch(() => {});
@@ -268,6 +271,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
                 {activityLabel}
               </p>
               <SlowLineNote note={slowNote} />
+              <PictureSender compact childId={childId} callId={liveCallId} onSantaNote={(note) => managerRef.current?.sendPicture(note)} />
             </div>
           )}
 
@@ -301,6 +305,7 @@ export function CallScreen({ childId, childName, photoUrl, ambientSound, canSwit
                 <p className="text-sm text-mist">Your private line to the North Pole</p>
                 <p className="text-[11px] text-mist/60">Calling as {childName}</p>
               </div>
+              <PictureSender childId={childId} />
             </>
           )}
           {(view === "calling" || view === "connected") && (

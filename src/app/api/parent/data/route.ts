@@ -22,6 +22,7 @@ export const POST = handle(async (req: NextRequest) => {
   switch (scope) {
     case "call_history":
       await db.call.deleteMany({ where: { child: kids, status: { notIn: ["ACTIVE", "CONNECTING"] } } });
+      await db.childPhoto.deleteMany({ where: { child: kids } });
       break;
     case "memories":
       await db.memory.deleteMany({ where: { child: kids } });

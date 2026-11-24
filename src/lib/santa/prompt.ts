@@ -97,6 +97,8 @@ export type BuildInput = {
   wishes?: WishInput[];
   /** Shared facts about the child's household from the parents who manage them (scout elf, pets, traditions). */
   householdNotes?: string[];
+  /** Pictures the child sent since Santa last heard about them (only ones cleared for Santa). */
+  photos?: { at: Date; description: string; caption?: string }[];
   call: CallContextInput;
 };
 
@@ -415,6 +417,13 @@ Newest first. This is your history with ${name}, so the call feels like a contin
 ${recent.map((c) => `- ${localTimeDescription(c.at, call.timezone)}: ${clean(c.summary).slice(0, 500)}`).join("\n")}`);
   }
 
+  const photos = (input.photos ?? []).slice(0, 3);
+  if (photos.length) {
+    sections.push(`# Pictures ${name} sent you
+${name} sent you ${photos.length === 1 ? "a picture" : "some pictures"} since you last talked. Early in the call, tell them you got ${photos.length === 1 ? "it" : "them"} and react warmly and specifically, as if ${photos.length === 1 ? "it's" : "they're"} right in front of you (pinned up on the workshop wall, say). Ask them about ${photos.length === 1 ? "it" : "one of them"}.
+${photos.map((ph) => `- ${localTimeDescription(ph.at, call.timezone)}: ${clean(ph.caption ?? "") ? `${name} says it's "${clean(ph.caption ?? "")}". ` : ""}${clean(ph.description) || "You couldn't quite make out the details, so ask them to tell you all about it."}`).join("\n")}`);
+  }
+
   if (memories.length) {
     sections.push(`# Things you remember from earlier calls
 These came from previous conversations and were confirmed by the family. You know all of them, so use them to recognize what ${name} talks about and never contradict them. Bring up at most one or two on your own, casually ("last time you told me…"), and vary which ones from call to call.
@@ -471,6 +480,16 @@ export const RUN_EXCUSES = [
   "the North Pole weather crew says a snowstorm is rolling in and the reindeer need to come inside",
   "the elves are calling you over to test a brand-new toy",
 ] as const;
+
+/** Live note when a child sends Santa a picture during a call. */
+export function photoNote(name: string, description: string, caption = ""): string {
+  const who = clean(name) || "the child";
+  const what = clean(description);
+  const said = clean(caption) ? ` ${who} says it's "${clean(caption)}".` : "";
+  return what
+    ? `(Quiet note for Santa, not from the child: ${who} just sent you a picture, and you're looking at it now.${said} It shows: ${what} Tell them you got it and react warmly and specifically, then ask them about it.)`
+    : `(Quiet note for Santa, not from the child: ${who} just sent you a picture.${said} ${said ? "The details are a little blurry on your end, so react to what they told you and" : "It's a little blurry on your end, so"} ask them to tell you all about it.)`;
+}
 
 /** Picks an excuse index, never repeating `avoid` (the last one used on this device). */
 export function pickRunExcuse(avoid: number | null = null, random: () => number = Math.random): number {

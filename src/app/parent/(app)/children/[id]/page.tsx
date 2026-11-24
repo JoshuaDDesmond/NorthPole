@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import { childWhere } from "@/lib/parent-data";
 import { ChildManagers } from "@/components/parent/ChildManagers";
 import { WishListEditor } from "@/components/parent/WishListEditor";
+import { ChildPictures } from "@/components/parent/ChildPictures";
 import { toWishView } from "@/lib/wish-view";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,12 @@ export default async function ChildPage({ params }: { params: Promise<{ id: stri
       wishes: { orderBy: [{ topWish: "desc" }, { sortOrder: "asc" }, { createdAt: "asc" }] },
       memories: { orderBy: { createdAt: "desc" } },
       access: { select: { parentUserId: true } },
+      photos: {
+        orderBy: { createdAt: "desc" },
+        take: 60,
+        select: { id: true, createdAt: true, caption: true, description: true, safetyFlag: true, safetyNote: true, mentionedAt: true, callId: true },
+      },
+      family: { select: { timezone: true } },
     },
   });
   if (!child) notFound();
@@ -78,7 +85,7 @@ export default async function ChildPage({ params }: { params: Promise<{ id: stri
       />
       <Suspense>
         <ChildTabs
-          badges={{ memory: pending, wishes: child.wishes.filter((w) => !w.approved).length }}
+          badges={{ memory: pending, wishes: child.wishes.filter((w) => !w.approved).length, pictures: child.photos.filter((p) => p.safetyFlag).length }}
           panels={{
             profile: (
               <div className="space-y-6">
@@ -110,6 +117,22 @@ export default async function ChildPage({ params }: { params: Promise<{ id: stri
                 childId={child.id}
                 childName={name}
                 memories={child.memories.map((m) => ({ id: m.id, content: m.content, status: m.status, source: m.source, createdAt: m.createdAt.toISOString() }))}
+              />
+            ),
+            pictures: (
+              <ChildPictures
+                childName={name}
+                timezone={child.family.timezone}
+                pictures={child.photos.map((p) => ({
+                  id: p.id,
+                  createdAt: p.createdAt.toISOString(),
+                  caption: p.caption,
+                  description: p.description,
+                  safetyFlag: p.safetyFlag,
+                  safetyNote: p.safetyNote,
+                  mentioned: Boolean(p.mentionedAt),
+                  duringCall: Boolean(p.callId && p.mentionedAt),
+                }))}
               />
             ),
             preview: <ContextPreview childId={child.id} />,

@@ -63,3 +63,18 @@ describe("keeping calls fresh", () => {
     expect(hellos.size).toBe(8);
   });
 });
+
+describe("pictures sent to Santa", () => {
+  it("tells Santa about new pictures in the briefing and live during a call", async () => {
+    const { photoNote } = await import("@/lib/santa/prompt");
+    const text = buildSantaInstructions({ ...input(2), photos: [{ at: NOW, description: "A poster of a red sleigh." }] });
+    expect(text).toMatch(/# Pictures Ronan sent you/);
+    expect(text).toContain("A poster of a red sleigh.");
+    expect(buildSantaInstructions(input(2))).not.toMatch(/# Pictures/);
+    expect(photoNote("Ronan", "A poster of a red sleigh.")).toMatch(/Ronan just sent you a picture.*A poster of a red sleigh\./);
+    expect(photoNote("Ronan", "")).toMatch(/ask them to tell you all about it/);
+    expect(photoNote("Ronan", "A poster of an animatronic bear.", "my Five Nights at Freddy's poster")).toMatch(/Ronan says it's "my Five Nights at Freddy's poster"\. It shows: A poster/);
+    const withCaption = buildSantaInstructions({ ...input(2), photos: [{ at: NOW, description: "A poster.", caption: "my Five Nights at Freddy's poster" }] });
+    expect(withCaption).toContain(`Ronan says it's "my Five Nights at Freddy's poster"`);
+  });
+});

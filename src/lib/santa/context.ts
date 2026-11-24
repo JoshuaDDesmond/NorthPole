@@ -33,7 +33,7 @@ export async function assembleCallContext(params: {
   });
   if (!child) return null;
 
-  const [previousCallCount, realCallCount, lastCall, recentCalls] = await Promise.all([
+  const [previousCallCount, realCallCount, lastCall, recentCalls, photos] = await Promise.all([
     db.call.count({ where: { childId: child.id, connectedAt: { not: null } } }),
     // A call of a minute or more counts as the one where Santa asked "have you been good?".
     db.call.count({ where: { childId: child.id, connectedAt: { not: null }, durationSec: { gte: 60 } } }),
@@ -51,6 +51,13 @@ export async function assembleCallContext(params: {
           select: { startedAt: true, summary: true },
         })
       : Promise.resolve([] as { startedAt: Date; summary: string | null }[]),
+    // Pictures the child sent that Santa hasn't heard about yet (never ones held back for a parent).
+    db.childPhoto.findMany({
+      where: { childId: child.id, mentionedAt: null, safetyFlag: false, createdAt: { gte: new Date(now.getTime() - 30 * 86_400_000) } },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      select: { id: true, createdAt: true, description: true, caption: true },
+    }),
   ]);
 
   // A fresh plan for every repeat call, never opening the same way as the last one.
@@ -76,6 +83,7 @@ export async function assembleCallContext(params: {
     talkingPoints: child.talkingPoints,
     memories: child.memories,
     householdNotes: child.access.map((a) => a.parentUser.householdNotes).filter((n) => n.trim()),
+    photos: photos.map((ph) => ({ at: ph.createdAt, description: ph.description, caption: ph.caption })),
     wishes: child.wishes,
     call: {
       now,
@@ -116,6 +124,8 @@ export async function assembleCallContext(params: {
     },
     usedTalkingPoints: selectTalkingPoints(child.talkingPoints, now),
     usedMemories: selectMemories(child.memories),
+    /** Pictures included in this briefing; marked as mentioned once the call starts. */
+    usedPhotoIds: photos.map((ph) => ph.id),
     /** Stored on the call so the next call can be different. */
     conversationPlan: previousCallCount > 0 ? encodePlan(plan) : null,
   };
